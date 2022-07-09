@@ -8,12 +8,12 @@ from typing import BinaryIO, Dict, ClassVar
 
 from serialization_tools.structx import Struct
 
-from relic.sga import _abc, _serializers as _s
-from relic.sga._abc import FileDefABC as FileDef, ArchivePtrs, DriveDef, FolderDef
-from relic.sga._core import MagicWord, Version, StorageType
-from relic.sga._serializers import read_toc, load_lazy_data, TocHeaderSerializer
-from relic.sga.errors import VersionMismatchError
-from relic.sga.protocols import StreamSerializer
+from relic.sga.core import _abc, _serializers as _s
+from relic.sga.core._abc import FileDefABC as FileDef, ArchivePtrs, DriveDef, FolderDef
+from relic.sga.core._core import MagicWord, Version, StorageType
+from relic.sga.core._serializers import read_toc, load_lazy_data, TocHeaderSerializer
+from relic.sga.core.errors import VersionMismatchError
+from relic.sga.core.protocols import StreamSerializer
 from relic.sga.v2._core import Archive, version, ArchiveMetadata
 
 

@@ -8,9 +8,9 @@ from typing import Optional
 
 from typing_extensions import TypeAlias
 
-from relic.sga import _abc
-from relic.sga._core import Version
-from relic.sga._serializers import Md5ChecksumHelper
+from relic.sga.core import _abc
+from relic.sga.core._core import Version
+from relic.sga.core._serializers import Md5ChecksumHelper
 
 
 @dataclass
