@@ -8,9 +8,9 @@ from typing import Optional
 
 from typing_extensions import TypeAlias
 
-from relic.sga.core import _abc
-from relic.sga.core._core import Version
-from relic.sga.core._serializers import Md5ChecksumHelper
+from relic.sga.core import abstract
+from relic.sga.core import Version
+from relic.sga.core.serializers import Md5ChecksumHelper
 
 
 @dataclass
@@ -49,7 +49,7 @@ class ArchiveMetadata:
 
 
 version = Version(2)
-Archive: TypeAlias = _abc.Archive[ArchiveMetadata, None]
-File: TypeAlias = _abc.File[None]
-Folder: TypeAlias = _abc.Folder[None]
-Drive: TypeAlias = _abc.Drive[None]
+Archive: TypeAlias = abstract.Archive[ArchiveMetadata, None]
+File: TypeAlias = abstract.File[None]
+Folder: TypeAlias = abstract.Folder[None]
+Drive: TypeAlias = abstract.Drive[None]
