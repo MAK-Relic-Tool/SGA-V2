@@ -48,7 +48,7 @@ class FileDefSerializer(StreamSerializer[FileDef]):
             data_pos=data_pos,
             length_on_disk=length_on_disk,
             length_in_archive=length_in_archive,
-            storage_type=storage_type
+            storage_type=storage_type,
         )
 
     def pack(self, stream: BinaryIO, value: FileDef) -> int:
@@ -69,6 +69,7 @@ class MetaBlock(_s.MetaBlock):
     """
     Container for header information used by V2
     """
+
     name: str
     ptrs: ArchivePtrs
     file_md5: bytes
@@ -77,7 +78,9 @@ class MetaBlock(_s.MetaBlock):
     @classmethod
     def default(cls) -> MetaBlock:
         default_md5: bytes = b"default hash.   "
-        return cls("Default Meta Block", ArchivePtrs.default(), default_md5, default_md5)
+        return cls(
+            "Default Meta Block", ArchivePtrs.default(), default_md5, default_md5
+        )
 
 
 @dataclass
@@ -120,9 +123,7 @@ file_md5_eigen = b"E01519D6-2DB7-4640-AF54-0A23319C56C3"
 header_md5_eigen = b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF"
 
 
-def assemble_meta(
-        stream: BinaryIO, header: MetaBlock, _: None
-) -> ArchiveMetadata:
+def assemble_meta(stream: BinaryIO, header: MetaBlock, _: None) -> ArchiveMetadata:
     file_md5_helper = _s.Md5ChecksumHelper(
         expected=header.file_md5,
         stream=stream,
@@ -141,7 +142,7 @@ def assemble_meta(
 
 
 def disassemble_meta(
-        stream: BinaryIO, header: ArchiveMetadata
+    stream: BinaryIO, header: ArchiveMetadata
 ) -> Tuple[MetaBlock, None]:
     meta = MetaBlock(None, None, header_md5=header.header_md5, file_md5=header.file_md5)
     return meta, None
@@ -164,8 +165,10 @@ def recalculate_md5(stream: BinaryIO, meta: MetaBlock):
     meta.file_md5 = file_md5_helper.read()
     meta.header_md5 = header_md5_helper.read()
 
-def meta2def(_:None) -> FileDef:
-    return FileDef(None,None,None,None,None)
+
+def meta2def(_: None) -> FileDef:
+    return FileDef(None, None, None, None, None)
+
 
 class ArchiveSerializer(_s.ArchiveSerializer[ArchiveMetadata, None, FileDef, None]):
     """
@@ -173,10 +176,10 @@ class ArchiveSerializer(_s.ArchiveSerializer[ArchiveMetadata, None, FileDef, Non
     """
 
     def __init__(
-            self,
-            toc_serializer: StreamSerializer[TocBlock],
-            meta_serializer: StreamSerializer[MetaBlock],
-            toc_serialization_info: TOCSerializationInfo,
+        self,
+        toc_serializer: StreamSerializer[TocBlock],
+        meta_serializer: StreamSerializer[MetaBlock],
+        toc_serialization_info: TOCSerializationInfo,
     ):
         super().__init__(
             version=version,
@@ -184,13 +187,12 @@ class ArchiveSerializer(_s.ArchiveSerializer[ArchiveMetadata, None, FileDef, Non
             toc_serializer=toc_serializer,
             toc_meta_serializer=None,
             toc_serialization_info=toc_serialization_info,
-
             assemble_meta=assemble_meta,
             disassemble_meta=disassemble_meta,
             build_file_meta=lambda _: None,
             gen_empty_meta=MetaBlock.default,
             finalize_meta=recalculate_md5,
-            meta2def=meta2def
+            meta2def=meta2def,
         )
 
 
@@ -217,8 +219,8 @@ archive_serializer = ArchiveSerializer(
         file=_file_serializer,
         drive=_drive_serializer,
         folder=_folder_serializer,
-        name_toc_is_count=True
-    )
+        name_toc_is_count=True,
+    ),
 )
 
 __all__ = [
