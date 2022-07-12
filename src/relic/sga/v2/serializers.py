@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from typing import BinaryIO, Dict, Tuple
 
 from relic.sga.core import serializers as _s
-from relic.sga.core.abstract import FileDef, ArchivePtrs, DriveDef, FolderDef, TocHeader
+from relic.sga.core.abstract import FileDef, ArchivePtrs, TocBlock
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.protocols import StreamSerializer
+from relic.sga.core.serializers import TOCSerializationInfo
 from serialization_tools.structx import Struct
 
 from relic.sga.v2.definitions import version, ArchiveMetadata
@@ -38,12 +39,16 @@ class FileDefSerializer(StreamSerializer[FileDef]):
             name_pos,
             storage_type_val,
             data_pos,
-            length_on_disk,
             length_in_archive,
+            length_on_disk,
         ) = self.layout.unpack_stream(stream)
         storage_type: StorageType = self.INT2STORAGE[storage_type_val]
         return FileDef(
-            name_pos, data_pos, length_on_disk, length_in_archive, storage_type
+            name_pos=name_pos,
+            data_pos=data_pos,
+            length_on_disk=length_on_disk,
+            length_in_archive=length_in_archive,
+            storage_type=storage_type
         )
 
     def pack(self, stream: BinaryIO, value: FileDef) -> int:
@@ -60,19 +65,23 @@ class FileDefSerializer(StreamSerializer[FileDef]):
 
 
 @dataclass
-class ArchiveHeader:
+class MetaBlock(_s.MetaBlock):
     """
     Container for header information used by V2
     """
-
     name: str
     ptrs: ArchivePtrs
     file_md5: bytes
     header_md5: bytes
 
+    @classmethod
+    def default(cls) -> MetaBlock:
+        default_md5: bytes = b"default hash.   "
+        return cls("Default Meta Block", ArchivePtrs.default(), default_md5, default_md5)
+
 
 @dataclass
-class ArchiveHeaderSerializer(StreamSerializer[ArchiveHeader]):
+class ArchiveHeaderSerializer(StreamSerializer[MetaBlock]):
     """
     Serializer to convert header information to it's dataclass; ArchiveHeader
     """
@@ -81,7 +90,7 @@ class ArchiveHeaderSerializer(StreamSerializer[ArchiveHeader]):
 
     ENCODING = "utf-16-le"
 
-    def unpack(self, stream: BinaryIO) -> ArchiveHeader:
+    def unpack(self, stream: BinaryIO) -> MetaBlock:
         (
             file_md5,
             encoded_name,
@@ -92,9 +101,9 @@ class ArchiveHeaderSerializer(StreamSerializer[ArchiveHeader]):
         header_pos = stream.tell()
         name = encoded_name.rstrip(b"").decode(self.ENCODING)
         ptrs = ArchivePtrs(header_pos, header_size, data_pos)
-        return ArchiveHeader(name, ptrs, file_md5=file_md5, header_md5=header_md5)
+        return MetaBlock(name, ptrs, file_md5=file_md5, header_md5=header_md5)
 
-    def pack(self, stream: BinaryIO, value: ArchiveHeader) -> int:
+    def pack(self, stream: BinaryIO, value: MetaBlock) -> int:
         encoded_name = value.name.encode(self.ENCODING)
         args = (
             value.file_md5,
@@ -107,12 +116,13 @@ class ArchiveHeaderSerializer(StreamSerializer[ArchiveHeader]):
         return written
 
 
-def parse_meta(
-    stream: BinaryIO, header: ArchiveHeader, _: None
-) -> Tuple[str, ArchiveMetadata, ArchivePtrs]:
-    file_md5_eigen = b"E01519D6-2DB7-4640-AF54-0A23319C56C3"
-    header_md5_eigen = b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF"
+file_md5_eigen = b"E01519D6-2DB7-4640-AF54-0A23319C56C3"
+header_md5_eigen = b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF"
 
+
+def assemble_meta(
+        stream: BinaryIO, header: MetaBlock, _: None
+) -> ArchiveMetadata:
     file_md5_helper = _s.Md5ChecksumHelper(
         expected=header.file_md5,
         stream=stream,
@@ -127,67 +137,61 @@ def parse_meta(
         eigen=header_md5_eigen,
     )
     metadata = ArchiveMetadata(file_md5_helper, header_md5_helper)
-    return header.name, metadata, header.ptrs
+    return metadata
 
 
-class ArchiveSerializer(_s.ArchiveSerializer[ArchiveMetadata, None, FileDef]):
+def disassemble_meta(
+        stream: BinaryIO, header: ArchiveMetadata
+) -> Tuple[MetaBlock, None]:
+    meta = MetaBlock(None, None, header_md5=header.header_md5, file_md5=header.file_md5)
+    return meta, None
+
+
+def recalculate_md5(stream: BinaryIO, meta: MetaBlock):
+    file_md5_helper = _s.Md5ChecksumHelper(
+        expected=None,
+        stream=stream,
+        start=meta.ptrs.header_pos,
+        eigen=file_md5_eigen,
+    )
+    header_md5_helper = _s.Md5ChecksumHelper(
+        expected=None,
+        stream=stream,
+        start=meta.ptrs.header_pos,
+        size=meta.ptrs.header_size,
+        eigen=header_md5_eigen,
+    )
+    meta.file_md5 = file_md5_helper.read()
+    meta.header_md5 = header_md5_helper.read()
+
+def meta2def(_:None) -> FileDef:
+    return FileDef(None,None,None,None,None)
+
+class ArchiveSerializer(_s.ArchiveSerializer[ArchiveMetadata, None, FileDef, None]):
     """
     Serializer to read/write an SGA file to/from a stream
     """
 
     def __init__(
-        self,
-        toc_serializer: StreamSerializer[TocHeader],
-        meta_header_serializer: StreamSerializer[ArchiveHeader],
-        drive_serializer: StreamSerializer[DriveDef],
-        folder_serializer: StreamSerializer[FolderDef],
-        file_serializer: StreamSerializer[FileDef],
+            self,
+            toc_serializer: StreamSerializer[TocBlock],
+            meta_serializer: StreamSerializer[MetaBlock],
+            toc_serialization_info: TOCSerializationInfo,
     ):
         super().__init__(
             version=version,
+            meta_serializer=meta_serializer,
             toc_serializer=toc_serializer,
-            meta_header_serializer=meta_header_serializer,
-            meta_footer_serializer=None,
-            name_toc_is_count=False,
-            drive_serializer=drive_serializer,
-            folder_serializer=folder_serializer,
-            file_serializer=file_serializer,
-            parse_meta=parse_meta,
-            build_file_meta=lambda _: None,
-        )
+            toc_meta_serializer=None,
+            toc_serialization_info=toc_serialization_info,
 
-    #
-    # def read(
-    #         self, stream: BinaryIO, lazy: bool = False, decompress: bool = True
-    # ) -> Archive:
-    #     MagicWord.read_magic_word(stream)
-    #     stream_version = Version.unpack(stream)
-    #     if stream_version != self.version:
-    #         raise VersionMismatchError(stream_version, self.version)
-    #
-    #     archive_header = self.archive_header_serializer.unpack(stream)
-    #
-    #     # Seek to header; but we skip that because we are already there
-    #     toc_header = self.toc_serializer.unpack(stream)
-    #     drives, files = read_toc(
-    #         stream=stream,
-    #         toc_header=toc_header,
-    #         ptrs=archive_header.ptrs,
-    #         drive_def=self.drive_serializer,
-    #         file_def=self.file_serializer,
-    #         folder_def=self.folder_serializer,
-    #         decompress=decompress,
-    #         build_file_meta=lambda _: None,  # V2 has no metadata
-    #         name_toc_is_count=True,
-    #     )
-    #
-    #     if not lazy:
-    #         load_lazy_data(files)
-    #
-    #     return Archive(archive_header.name, metadata, drives)
-    #
-    # def write(self, stream: BinaryIO, archive: Archive) -> int:
-    #     raise NotImplementedError
+            assemble_meta=assemble_meta,
+            disassemble_meta=disassemble_meta,
+            build_file_meta=lambda _: None,
+            gen_empty_meta=MetaBlock.default,
+            finalize_meta=recalculate_md5,
+            meta2def=meta2def
+        )
 
 
 _folder_layout = Struct("<I 4H")
@@ -207,16 +211,19 @@ _meta_header_serializer = ArchiveHeaderSerializer(_meta_header_layout)
 
 archive_serializer = ArchiveSerializer(
     # version=version,
-    meta_header_serializer=_meta_header_serializer,
+    meta_serializer=_meta_header_serializer,
     toc_serializer=_toc_header_serializer,
-    file_serializer=_file_serializer,
-    drive_serializer=_drive_serializer,
-    folder_serializer=_folder_serializer,
+    toc_serialization_info=TOCSerializationInfo(
+        file=_file_serializer,
+        drive=_drive_serializer,
+        folder=_folder_serializer,
+        name_toc_is_count=True
+    )
 )
 
 __all__ = [
     "FileDefSerializer",
-    "ArchiveHeader",
+    "MetaBlock",
     "ArchiveHeaderSerializer",
     "ArchiveSerializer",
     "archive_serializer",
