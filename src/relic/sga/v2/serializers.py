@@ -144,11 +144,16 @@ def assemble_meta(stream: BinaryIO, header: MetaBlock, _: None) -> ArchiveMetada
 def disassemble_meta(
     stream: BinaryIO, header: ArchiveMetadata
 ) -> Tuple[MetaBlock, None]:
-    meta = MetaBlock(None, None, header_md5=header.header_md5, file_md5=header.file_md5)
+    meta = MetaBlock(
+        None, #type: ignore
+        None, #type: ignore
+        header_md5=header.header_md5,
+        file_md5=header.file_md5
+    )
     return meta, None
 
 
-def recalculate_md5(stream: BinaryIO, meta: MetaBlock):
+def recalculate_md5(stream: BinaryIO, meta: MetaBlock) -> None:
     file_md5_helper = _s.Md5ChecksumHelper(
         expected=None,
         stream=stream,
@@ -167,10 +172,10 @@ def recalculate_md5(stream: BinaryIO, meta: MetaBlock):
 
 
 def meta2def(_: None) -> FileDef:
-    return FileDef(None, None, None, None, None)
+    return FileDef(None, None, None, None, None) #type: ignore
 
 
-class ArchiveSerializer(_s.ArchiveSerializer[ArchiveMetadata, None, FileDef, None]):
+class ArchiveSerializer(_s.ArchiveSerializer[ArchiveMetadata, None, FileDef, MetaBlock, None]):
     """
     Serializer to read/write an SGA file to/from a stream
     """

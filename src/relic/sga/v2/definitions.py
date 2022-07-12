@@ -49,7 +49,19 @@ class ArchiveMetadata:
 
 
 version = Version(2)
-Archive: TypeAlias = abstract.Archive[ArchiveMetadata, None]
-File: TypeAlias = abstract.File[None]
-Folder: TypeAlias = abstract.Folder[None]
-Drive: TypeAlias = abstract.Drive[None]
+
+
+class Archive(abstract.Archive[ArchiveMetadata, None]):
+    ...
+
+
+class File(abstract.File[None]):
+    ...
+
+
+class Folder(abstract.Folder[None]):
+    ...
+
+
+class Drive(abstract.Drive[None]):
+    ...
