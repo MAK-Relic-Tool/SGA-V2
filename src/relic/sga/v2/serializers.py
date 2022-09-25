@@ -142,7 +142,7 @@ def assemble_meta(stream: BinaryIO, header: MetaBlock, _: None) -> ArchiveMetada
 
 
 def disassemble_meta(
-    stream: BinaryIO, header: ArchiveMetadata
+        stream: BinaryIO, header: ArchiveMetadata
 ) -> Tuple[MetaBlock, None]:
     meta = MetaBlock(
         None,  # type: ignore
@@ -183,10 +183,38 @@ class ArchiveSerializer(
     """
 
     def __init__(
-        self,
-        toc_serializer: StreamSerializer[TocBlock],
-        meta_serializer: StreamSerializer[MetaBlock],
-        toc_serialization_info: TOCSerializationInfo,
+            self,
+            toc_serializer: StreamSerializer[TocBlock],
+            meta_serializer: StreamSerializer[MetaBlock],
+            toc_serialization_info: TOCSerializationInfo,
+    ):
+        super().__init__(
+            version=version,
+            meta_serializer=meta_serializer,
+            toc_serializer=toc_serializer,
+            toc_meta_serializer=None,
+            toc_serialization_info=toc_serialization_info,
+            assemble_meta=assemble_meta,
+            disassemble_meta=disassemble_meta,
+            build_file_meta=lambda _: None,
+            gen_empty_meta=MetaBlock.default,
+            finalize_meta=recalculate_md5,
+            meta2def=meta2def,
+        )
+
+
+class SGAFSSerializer(
+    _s.SGAFSSerializer[ArchiveMetadata, None, FileDef, MetaBlock, None]
+):
+    """
+    Serializer to read/write an SGA file to/from a stream from/to a SGA File System
+    """
+
+    def __init__(
+            self,
+            toc_serializer: StreamSerializer[TocBlock],
+            meta_serializer: StreamSerializer[MetaBlock],
+            toc_serialization_info: TOCSerializationInfo,
     ):
         super().__init__(
             version=version,
@@ -230,10 +258,23 @@ archive_serializer = ArchiveSerializer(
     ),
 )
 
+sgafs_serializer = SGAFSSerializer(
+    meta_serializer=_meta_header_serializer,
+    toc_serializer=_toc_header_serializer,
+    toc_serialization_info=TOCSerializationInfo(
+        file=_file_serializer,
+        drive=_drive_serializer,
+        folder=_folder_serializer,
+        name_toc_is_count=True,
+    ),
+)
+
 __all__ = [
     "FileDefSerializer",
     "MetaBlock",
     "ArchiveHeaderSerializer",
     "ArchiveSerializer",
     "archive_serializer",
+    "sgafs_serializer"
 ]
+

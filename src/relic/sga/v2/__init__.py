@@ -10,6 +10,7 @@ from relic.sga.v2.definitions import (
     version,
 )
 from relic.sga.v2.serializers import archive_serializer as ArchiveIO
+from relic.sga.v2.serializers import sgafs_serializer as SGAFSIO
 
 __version__ = "1.0.0"
 
@@ -19,6 +20,7 @@ __all__ = [
     "Folder",
     "File",
     "ArchiveIO",
+    "SGAFSIO",
     "version",
     "ArchiveMetadata",
 ]

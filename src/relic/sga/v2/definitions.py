@@ -4,7 +4,7 @@ Classes & Aliases that Relic's SGA-V2 uses.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, Any, Dict
 
 from typing_extensions import TypeAlias
 
@@ -46,6 +46,12 @@ class ArchiveMetadata:
 
     _file_md5: Md5ChecksumHelper
     _header_md5: Md5ChecksumHelper
+
+    def as_dict(self) -> Dict[str,Any]:
+        return {
+            "file_md5":self.file_md5.hex(),
+            "header_md5":self.header_md5.hex(),
+        }
 
 
 version = Version(2)

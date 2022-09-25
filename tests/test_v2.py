@@ -4,10 +4,11 @@ from pathlib import Path
 from typing import List, Iterable, BinaryIO
 
 import pytest
+from fs.base import FS
 from relic.sga.core import MagicWord, Version
-
+from relic.sga.core.filesystem import SGAFS
 from relic.sga import v2
-from relic.sga.v2 import ArchiveIO
+from relic.sga.v2 import SGAFSIO, ArchiveIO
 
 _path = Path(__file__).parent
 try:
@@ -49,7 +50,7 @@ v2_test_files.extend(file_sources.get("files", []))
 v2_test_files = list(set(v2_test_files))  # Get unique paths
 
 
-class TestLangEnvironment:
+class TestArchive:
     @pytest.fixture(params=v2_test_files)
     def v2_file_stream(self, request) -> BinaryIO:
         v2_file: str = request.param
@@ -68,3 +69,25 @@ class TestLangEnvironment:
     def test_read(self, v2_file_stream):
         v2_stream = v2_file_stream
         ArchiveIO.read(v2_stream)
+
+
+class TestSGAFS:
+    @pytest.fixture(params=v2_test_files)
+    def v2_file_stream(self, request) -> BinaryIO:
+        v2_file: str = request.param
+        # p = Path(v2_file)
+        # p = p.with_suffix('.json')
+
+        # with open(p, "r") as data:
+        #     lookup: Dict[str, str] = json.load(data)
+        #     coerced_lookup: Dict[int, str] = {int(key): value for key, value in lookup.items()}
+
+        with open(v2_file, "rb") as v2_handle:
+            data = v2_handle.read()
+
+        return BytesIO(data)
+
+    def test_read(self, v2_file_stream):
+        v2_stream = v2_file_stream
+        with SGAFSIO.read(v2_stream) as sga:
+            pass
