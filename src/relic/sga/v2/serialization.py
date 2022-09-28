@@ -20,7 +20,6 @@ from relic.sga.core.serialization import (
 from relic.sga.v2.definitions import version
 
 
-
 class FileDefSerializer(StreamSerializer[FileDef]):
     """
     Serializes File information using the V2 format.
@@ -39,6 +38,7 @@ class FileDefSerializer(StreamSerializer[FileDef]):
         self.layout = layout
 
     def unpack(self, stream: BinaryIO) -> FileDef:
+        """Unpacks a File Definition from the stream."""
         storage_type_val: int
         (
             name_pos,
@@ -57,6 +57,7 @@ class FileDefSerializer(StreamSerializer[FileDef]):
         )
 
     def pack(self, stream: BinaryIO, value: FileDef) -> int:
+        """Packs a File Definition into the stream."""
         storage_type = self.STORAGE2INT[value.storage_type]
         args = (
             value.name_pos,
@@ -82,6 +83,7 @@ class MetaBlock(_s.MetaBlock):
 
     @classmethod
     def default(cls) -> MetaBlock:
+        """Returns a Default, 'garbage' instance which can be used as a placeholder for write-backs."""
         default_md5: bytes = b"default hash.   "
         return cls(
             "Default Meta Block", ArchivePtrs.default(), default_md5, default_md5
@@ -99,6 +101,7 @@ class ArchiveHeaderSerializer(StreamSerializer[MetaBlock]):
     ENCODING = "utf-16-le"
 
     def unpack(self, stream: BinaryIO) -> MetaBlock:
+        """Unpacks a MetaBlock from the stream."""
         (
             file_md5,
             encoded_name,
@@ -112,6 +115,7 @@ class ArchiveHeaderSerializer(StreamSerializer[MetaBlock]):
         return MetaBlock(name, ptrs, file_md5=file_md5, header_md5=header_md5)
 
     def pack(self, stream: BinaryIO, value: MetaBlock) -> int:
+        """Packs a MetaBlock into the stream."""
         encoded_name = value.name.encode(self.ENCODING)
         args = (
             value.file_md5,
@@ -129,12 +133,14 @@ HEADER_MD5_EIGEN = b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF"
 
 
 def assemble_meta(_: BinaryIO, header: MetaBlock, __: None) -> Dict[str, object]:
+    """Extracts information from the meta-block to a dictionary the FS can store."""
     return {"file_md5": header.file_md5.hex(), "header_md5": header.header_md5.hex()}
 
 
 def disassemble_meta(
-    _: BinaryIO, metadata: Dict[str, object]
+        _: BinaryIO, metadata: Dict[str, object]
 ) -> Tuple[MetaBlock, None]:
+    """Converts the archive's metadata dictionary into a MetaBlock class the Serializer can use."""
     meta = MetaBlock(
         None,  # type: ignore
         None,  # type: ignore
@@ -165,7 +171,7 @@ def recalculate_md5(stream: BinaryIO, meta: MetaBlock) -> None:
     meta.header_md5 = header_md5_helper.read()
 
 
-def meta2def(meta: Dict[str,object]) -> FileDef:
+def meta2def(meta: Dict[str, object]) -> FileDef:
     """
     Converts metadata to a File Definitions
 
@@ -180,10 +186,10 @@ class EssenceFSSerializer(_s.EssenceFSSerializer[FileDef, MetaBlock, None]):
     """
 
     def __init__(
-        self,
-        toc_serializer: StreamSerializer[TocBlock],
-        meta_serializer: StreamSerializer[MetaBlock],
-        toc_serialization_info: TOCSerializationInfo[FileDef],
+            self,
+            toc_serializer: StreamSerializer[TocBlock],
+            meta_serializer: StreamSerializer[MetaBlock],
+            toc_serialization_info: TOCSerializationInfo[FileDef],
     ):
         super().__init__(
             version=version,
