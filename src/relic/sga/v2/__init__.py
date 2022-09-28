@@ -2,25 +2,14 @@
 Relic's V2.0 Specification for SGA files.
 """
 from relic.sga.v2.definitions import (
-    Archive,
-    Drive,
-    Folder,
-    File,
-    ArchiveMetadata,
     version,
 )
-from relic.sga.v2.serializers import archive_serializer as ArchiveIO
-from relic.sga.v2.serializers import sgafs_serializer as SGAFSIO
+
+from relic.sga.v2.serialization import essence_fs_serializer as EssenceFSHandler
 
 __version__ = "1.0.0"
 
 __all__ = [
-    "Archive",
-    "Drive",
-    "Folder",
-    "File",
-    "ArchiveIO",
-    "SGAFSIO",
+    "EssenceFSHandler",
     "version",
-    "ArchiveMetadata",
 ]
