@@ -1,7 +1,7 @@
 """
 Classes & Aliases that Relic's SGA-V2 uses.
 """
-from relic.sga.core import Version
+from relic.sga.core.definitions import Version
 
 version = Version(2)
 

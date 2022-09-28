@@ -145,6 +145,9 @@ def disassemble_meta(
 
 
 def recalculate_md5(stream: BinaryIO, meta: MetaBlock) -> None:
+    """
+    Recalculates file and header
+    """
     file_md5_helper = _s.Md5ChecksumHelper(
         expected=None,
         stream=stream,
@@ -162,8 +165,13 @@ def recalculate_md5(stream: BinaryIO, meta: MetaBlock) -> None:
     meta.header_md5 = header_md5_helper.read()
 
 
-def meta2def(_: Dict[str:object]) -> FileDef:
-    return FileDef(None, None, None, None, None)  # type: ignore
+def meta2def(meta: Dict[str,object]) -> FileDef:
+    """
+    Converts metadata to a File Definitions
+
+    V2.0 only stores 'storage_type', which should be overridden later in the pipeline.
+    """
+    return FileDef(None, None, None, None, meta["storage_type"])  # type: ignore
 
 
 class EssenceFSSerializer(_s.EssenceFSSerializer[FileDef, MetaBlock, None]):
@@ -175,7 +183,7 @@ class EssenceFSSerializer(_s.EssenceFSSerializer[FileDef, MetaBlock, None]):
         self,
         toc_serializer: StreamSerializer[TocBlock],
         meta_serializer: StreamSerializer[MetaBlock],
-        toc_serialization_info: TOCSerializationInfo,
+        toc_serialization_info: TOCSerializationInfo[FileDef],
     ):
         super().__init__(
             version=version,
