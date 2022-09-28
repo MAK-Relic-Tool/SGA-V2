@@ -138,7 +138,7 @@ def assemble_meta(_: BinaryIO, header: MetaBlock, __: None) -> Dict[str, object]
 
 
 def disassemble_meta(
-        _: BinaryIO, metadata: Dict[str, object]
+    _: BinaryIO, metadata: Dict[str, object]
 ) -> Tuple[MetaBlock, None]:
     """Converts the archive's metadata dictionary into a MetaBlock class the Serializer can use."""
     meta = MetaBlock(
@@ -186,10 +186,10 @@ class EssenceFSSerializer(_s.EssenceFSSerializer[FileDef, MetaBlock, None]):
     """
 
     def __init__(
-            self,
-            toc_serializer: StreamSerializer[TocBlock],
-            meta_serializer: StreamSerializer[MetaBlock],
-            toc_serialization_info: TOCSerializationInfo[FileDef],
+        self,
+        toc_serializer: StreamSerializer[TocBlock],
+        meta_serializer: StreamSerializer[MetaBlock],
+        toc_serialization_info: TOCSerializationInfo[FileDef],
     ):
         super().__init__(
             version=version,

@@ -1,7 +1,6 @@
 import json
-from io import BytesIO
 from pathlib import Path
-from typing import List, Iterable, BinaryIO, Any, Dict, Tuple
+from typing import List, Iterable, Any, Dict
 
 import fs
 import pytest
@@ -9,7 +8,6 @@ from relic.sga.core import MagicWord, Version, StorageType
 from relic.sga.core.filesystem import EssenceFS
 
 from relic.sga import v2
-from relic.sga.v2 import EssenceFSIO
 
 _path = Path(__file__).parent
 try:
