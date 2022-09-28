@@ -1,11 +1,13 @@
 name: MyPy
 
 on:
+  workflow_dispatch:
+
   push:
     branches: [ main ]
     paths:
       - 'src/relic/**'
-      - '.github/workflows/mypy.yml'  
+      - '.github/workflows/mypy.yml'
       - 'mypy.ini'
   pull_request:
     branches: [ main ]
@@ -13,25 +15,9 @@ on:
       - 'src/relic/**'
       - '.github/workflows/mypy.yml'
       - 'mypy.ini'
+
 jobs:
   mypy:
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.9", "3.10"]
-    name: MyPy ${{ matrix.python-version }}
-    steps:
-    - uses: actions/checkout@v3
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        pip install mypy
-    - name: Run mypy
-      run: |
-        mypy --config-file mypy.ini --namespace-packages -p relic.sga
+    uses: MAK-Relic-Tool/Workflows/.github/workflows/mypy.yml@main
+    with:
+      package: "relic.core.sga"
