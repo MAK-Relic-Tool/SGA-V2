@@ -4,11 +4,11 @@ from pathlib import Path
 from typing import List, Iterable, BinaryIO
 
 import pytest
-from fs.base import FS
 from relic.sga.core import MagicWord, Version
-from relic.sga.core.filesystem import SGAFS
+from relic.sga.core.filesystem import EssenceFS
+
 from relic.sga import v2
-from relic.sga.v2 import SGAFSIO, ArchiveIO
+from relic.sga.v2 import EssenceFSIO
 
 _path = Path(__file__).parent
 try:
@@ -29,7 +29,7 @@ if __implicit_test_data not in file_sources["dirs"]:
 
 def v2_scan_directory(root_dir: str) -> Iterable[str]:
     root_directory = Path(root_dir)
-    for path_object in root_directory.glob('**/*.sga'):
+    for path_object in root_directory.glob("**/*.sga"):
         with path_object.open("rb") as handle:
             if not MagicWord.check_magic_word(handle, advance=True):
                 continue
@@ -50,7 +50,7 @@ v2_test_files.extend(file_sources.get("files", []))
 v2_test_files = list(set(v2_test_files))  # Get unique paths
 
 
-class TestArchive:
+class TestEssenceFS:
     @pytest.fixture(params=v2_test_files)
     def v2_file_stream(self, request) -> BinaryIO:
         v2_file: str = request.param
@@ -68,26 +68,22 @@ class TestArchive:
 
     def test_read(self, v2_file_stream):
         v2_stream = v2_file_stream
-        ArchiveIO.read(v2_stream)
+        with EssenceFSIO.read(v2_stream) as sga:
+            sga: EssenceFS
+            RAW2 = sga.getmeta("essence")
+            for file_path in sga.walk.files():
+                info = sga.getinfo(
+                    file_path, namespaces=["basic", "essence", "details"]
+                )
+                RAW = info.raw
+                continue
+            with BytesIO() as a:
+                EssenceFSIO.write(a, sga)
+                a.seek(0)
+                with EssenceFSIO.read(a) as sga_b:
+                    with BytesIO() as b:
+                        EssenceFSIO.write(b, sga_b)
 
-
-class TestSGAFS:
-    @pytest.fixture(params=v2_test_files)
-    def v2_file_stream(self, request) -> BinaryIO:
-        v2_file: str = request.param
-        # p = Path(v2_file)
-        # p = p.with_suffix('.json')
-
-        # with open(p, "r") as data:
-        #     lookup: Dict[str, str] = json.load(data)
-        #     coerced_lookup: Dict[int, str] = {int(key): value for key, value in lookup.items()}
-
-        with open(v2_file, "rb") as v2_handle:
-            data = v2_handle.read()
-
-        return BytesIO(data)
-
-    def test_read(self, v2_file_stream):
-        v2_stream = v2_file_stream
-        with SGAFSIO.read(v2_stream) as sga:
-            pass
+                        a.seek(0, 2)
+                        b.seek(0, 2)
+                        assert a.tell() == b.tell()
