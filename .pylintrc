@@ -112,7 +112,7 @@ evaluation=10.0 - ((float(4 * error + 3 * warning + 2 * refactor + 1 * conventio
 # Set the output format. Available formats are text, parseable, colorized, json
 # and msvs (visual studio). You can also give a reporter class, e.g.
 # mypackage.mymodule.MyReporterClass.
-output-format=text
+output-format=colorized
 
 # Tells whether to display a full report or only the messages.
 reports=no
