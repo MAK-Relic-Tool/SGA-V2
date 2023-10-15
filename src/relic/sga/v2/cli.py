@@ -2,21 +2,21 @@ import json
 import os
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
-from typing import Optional, Dict
+from typing import Optional, Dict, Any
 
 from relic.sga.core.filesystem import EssenceFS
 from relic.core.cli import CliPlugin, _SubParsersAction
 from relic.sga.v2.serialization import essence_fs_serializer as v2_serializer
-from relic.sga.core import StorageType
+from relic.sga.core.definitions import StorageType
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
 
-def _resolve_storage_type(s: Optional[str]):
+def _resolve_storage_type(s: Optional[str]) -> StorageType:
     _HELPER = {
         "STORE": StorageType.STORE,
         "BUFFER": StorageType.BUFFER_COMPRESS,
-        "STREAM": StorageType.STREAM_COMPRESS
+        "STREAM": StorageType.STREAM_COMPRESS,
     }
     if s is None:
         return StorageType.STORE
@@ -29,8 +29,9 @@ def _resolve_storage_type(s: Optional[str]):
 
 
 class RelicSgaPackV2Cli(CliPlugin):
-
-    def _create_parser(self, command_group: Optional[_SubParsersAction] = None) -> ArgumentParser:
+    def _create_parser(
+        self, command_group: Optional[_SubParsersAction] = None
+    ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
             parser = ArgumentParser("v2")
@@ -44,13 +45,12 @@ class RelicSgaPackV2Cli(CliPlugin):
         return parser
 
     def command(self, ns: Namespace) -> Optional[int]:
-
         # Extract Args
         working_dir: str = ns.src_dir
         outfile: str = ns.out_sga
         config_file: str = ns.config_file
         with open(config_file) as json_h:
-            config: Dict = json.load(json_h)
+            config: Dict[str, Any] = json.load(json_h)
 
         # Execute Command
         print(f"Packing `{outfile}`")
@@ -58,11 +58,16 @@ class RelicSgaPackV2Cli(CliPlugin):
         # Create 'SGA'
         sga = EssenceFS()
         name = os.path.basename(outfile)
-        sga.setmeta({
-            "name": name,  # Specify name of archive
-            "header_md5": "0" * 16,  # Must be present due to a bug, recalculated when packed
-            "file_md5": "0" * 16,  # Must be present due to a bug, recalculated when packed
-        }, "essence")
+        sga.setmeta(
+            {
+                "name": name,  # Specify name of archive
+                "header_md5": "0"
+                * 16,  # Must be present due to a bug, recalculated when packed
+                "file_md5": "0"
+                * 16,  # Must be present due to a bug, recalculated when packed
+            },
+            "essence",
+        )
 
         # Walk Drives
         for alias, drive in config.items():
@@ -70,7 +75,7 @@ class RelicSgaPackV2Cli(CliPlugin):
             sga_drive = None  # sga.create_drive(alias)
 
             # CWD for drive operations
-            drive_cwd = os.path.join(working_dir, drive.get("path",""))
+            drive_cwd = os.path.join(working_dir, drive.get("path", ""))
 
             # Try to pack files
             print(f"\tScanning files in `{drive_cwd}`")
@@ -103,9 +108,13 @@ class RelicSgaPackV2Cli(CliPlugin):
 
                     # match found, copy file to FS
                     # EssenceFS is unfortunately,
-                    print(f"\t\tPacking File `{os.path.relpath(full_path, drive_cwd)}` w/ `{storage.name}`")
+                    print(
+                        f"\t\tPacking File `{os.path.relpath(full_path, drive_cwd)}` w/ `{storage.name}`"
+                    )
                     frontier.add(full_path)
-                    if sga_drive is None:  # Lazily create drive, to avoid empty drives from being created
+                    if (
+                        sga_drive is None
+                    ):  # Lazily create drive, to avoid empty drives from being created
                         sga_drive = sga.create_drive(alias)
 
                     with open(full_path, "rb") as unpacked_file:
@@ -117,7 +126,9 @@ class RelicSgaPackV2Cli(CliPlugin):
                                     if len(buffer) == 0:
                                         break
                                     packed_file.write(buffer)
-                        sga_drive.setinfo(path_in_sga, {"essence": {"storage_type": storage}})
+                        sga_drive.setinfo(
+                            path_in_sga, {"essence": {"storage_type": storage}}
+                        )
 
         print(f"Writing `{outfile}` to disk")
         # Write to binary file:
