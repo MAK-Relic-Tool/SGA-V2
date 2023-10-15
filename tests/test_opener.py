@@ -105,7 +105,7 @@ _sample_meta = [
         "name": "SampleSGA-v2",
         "file_md5": "89ff85a0c700eceab446cc725784e299",
         "header_md5": "1d0571c708f9957815b8b660ceafe631",
-        "version":{"major":2,"minor":0}
+        "version": {"major": 2, "minor": 0},
     }
 ]
 
