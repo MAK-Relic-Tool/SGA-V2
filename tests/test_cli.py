@@ -1,6 +1,7 @@
 import io
 import os.path
 import subprocess
+
 # Local testing requires running `pip install -e "."`
 import tempfile
 from contextlib import redirect_stdout
@@ -51,8 +52,9 @@ class TestRelicSgaCli(CommandTests):
     ...
 
 
-def _get_sample_file(path:str):
+def _get_sample_file(path: str):
     return os.path.abspath(os.path.join(__file__, "../data", path))
+
 
 _SAMPLE_V2 = _get_sample_file("SampleSGA-v2.sga")
 _SAMPLE_V2_OCT_15_2023 = _get_sample_file("SampleSGA-v2-Oct-15-2023.sga")
