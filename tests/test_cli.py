@@ -11,7 +11,6 @@ import fs
 import pytest
 from fs.base import FS
 from fs.info import Info
-from fs.walk import Step
 
 
 class CommandTests:
@@ -53,8 +52,13 @@ class TestRelicSgaCli(CommandTests):
     ...
 
 
-_SAMPLE_V2 = os.path.abspath(os.path.join(__file__, "../data/SampleSGA-v2.sga"))
-_SAMPLES = [_SAMPLE_V2]
+def _get_sample_file(path: str):
+    return os.path.abspath(os.path.join(__file__, "../data", path))
+
+
+_SAMPLE_V2 = _get_sample_file("SampleSGA-v2.sga")
+_SAMPLE_V2_OCT_15_2023 = _get_sample_file("SampleSGA-v2-Oct-15-2023.sga")
+_SAMPLES = [_SAMPLE_V2, _SAMPLE_V2_OCT_15_2023]
 
 
 @pytest.mark.parametrize("src", argvalues=_SAMPLES, ids=_SAMPLES)
