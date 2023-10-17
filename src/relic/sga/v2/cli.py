@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 from argparse import ArgumentParser, Namespace
@@ -28,6 +29,43 @@ def _resolve_storage_type(s: Optional[str]) -> StorageType:
         return StorageType[s]
 
 
+
+def _arg_exists_err( value ):
+    return argparse.ArgumentTypeError(f"The given path '{value}' does not exist!")
+
+
+def _get_dir_type_validator(exists:bool):
+    def _dir_type(path: str):
+        if not os.path.exists(path):
+            if exists:
+                raise _arg_exists_err(path)
+            else:
+                return path
+
+        if os.path.isdir(path):
+            return path
+
+        raise argparse.ArgumentTypeError(f"The given path '{path}' is not a directory!")
+
+    return _dir_type
+
+
+def _get_file_type_validator(exists:Optional[bool]):
+    def _file_type(path: str):
+        if not os.path.exists(path):
+            if exists:
+                raise _arg_exists_err(path)
+            else:
+                return path
+
+        if os.path.isfile(path):
+            return path
+
+        raise argparse.ArgumentTypeError(f"The given path '{path}' is not a file!")
+
+    return _file_type
+
+
 class RelicSgaPackV2Cli(CliPlugin):
     def _create_parser(
         self, command_group: Optional[_SubParsersAction] = None
@@ -38,9 +76,9 @@ class RelicSgaPackV2Cli(CliPlugin):
         else:
             parser = command_group.add_parser("v2")
 
-        parser.add_argument("src_dir", type=str, help="Source Directory")
-        parser.add_argument("out_sga", type=str, help="Output SGA File")
-        parser.add_argument("config_file", type=str, help="Config .json file")
+        parser.add_argument("src_dir", type=_get_dir_type_validator(exists=True), help="Source Directory")
+        parser.add_argument("out_sga", type=_get_file_type_validator(exists=False), help="Output SGA File")
+        parser.add_argument("config_file", type=_get_file_type_validator(exists=True), help="Config .json file")
 
         return parser
 
