@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import typing
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -10,6 +11,7 @@ from relic.sga.core.filesystem import EssenceFS
 from relic.core.cli import CliPlugin, _SubParsersAction
 from relic.sga.v2.serialization import essence_fs_serializer as v2_serializer
 from relic.sga.core.definitions import StorageType
+from relic.sga.core.cli import _get_dir_type_validator, _get_file_type_validator
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
@@ -28,42 +30,6 @@ def _resolve_storage_type(s: Optional[str]) -> StorageType:
         return _HELPER[s]
     else:
         return StorageType[s]
-
-
-def _arg_exists_err(value):
-    return argparse.ArgumentTypeError(f"The given path '{value}' does not exist!")
-
-
-def _get_dir_type_validator(exists: bool):
-    def _dir_type(path: str):
-        if not os.path.exists(path):
-            if exists:
-                raise _arg_exists_err(path)
-            else:
-                return path
-
-        if os.path.isdir(path):
-            return path
-
-        raise argparse.ArgumentTypeError(f"The given path '{path}' is not a directory!")
-
-    return _dir_type
-
-
-def _get_file_type_validator(exists: Optional[bool]):
-    def _file_type(path: str):
-        if not os.path.exists(path):
-            if exists:
-                raise _arg_exists_err(path)
-            else:
-                return path
-
-        if os.path.isfile(path):
-            return path
-
-        raise argparse.ArgumentTypeError(f"The given path '{path}' is not a file!")
-
-    return _file_type
 
 
 class RelicSgaPackV2Cli(CliPlugin):
@@ -229,6 +195,7 @@ class RelicSgaRepackV2Cli(CliPlugin):
         # Create 'SGA'
         print(f"\tReading `{in_sga}`")
         with fs.open_fs(f"sga://{in_sga}") as sga:
+            sga = typing.cast(EssenceFS, sga)  # mypy hack
             # Write to binary file:
             print(f"\tWriting `{out_sga}`")
             with open(out_sga, "wb") as sga_file:
