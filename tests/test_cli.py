@@ -65,6 +65,7 @@ _SAMPLES = [_SAMPLE_V2, _SAMPLE_V2_OCT_15_2023]
 def test_cli_unpack_pack_one_to_one(src: str):
     cfg = """{
     "test": {
+      "name": "Sample Data",
       "solvers": [
         {
           "match": "STORE.txt",
