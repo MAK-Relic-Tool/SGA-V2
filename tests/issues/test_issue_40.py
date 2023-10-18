@@ -10,13 +10,47 @@ from contextlib import redirect_stderr
 import pytest
 
 _ARGS = [
-    (["sga", "pack", "v2", f"{__file__}/nonexistant_dir","dummy", "dummy"], f"error: argument src_dir: The given path '{__file__}/nonexistant_dir' does not exist!"),
-    (["sga", "pack", "v2",  __file__, "dummy", "dummy"], f"error: argument src_dir: The given path '{__file__}' is not a directory!"),
-
-    (["sga", "pack", "v2",  f"{__file__}/..", os.path.abspath(f"{__file__}/.."), "dummy"], f"error: argument out_sga: The given path '{os.path.abspath(f'{__file__}/..')}' is not a file!"),
-
-    (["sga", "pack", "v2", f"{__file__}/..", os.path.abspath(f"{__file__}/../newsga.sga"), "dummy"], f"error: argument config_file: The given path '{'dummy'}' does not exist!"),
-    (["sga", "pack", "v2",  f"{__file__}/..", os.path.abspath(f"{__file__}/../newsga.sga"), os.path.abspath(f"{__file__}/..")], f"error: argument config_file: The given path '{os.path.abspath(f'{__file__}/..')}' is not a file!"),
+    (
+        ["sga", "pack", "v2", f"{__file__}/nonexistant_dir", "dummy", "dummy"],
+        f"error: argument src_dir: The given path '{__file__}/nonexistant_dir' does not exist!",
+    ),
+    (
+        ["sga", "pack", "v2", __file__, "dummy", "dummy"],
+        f"error: argument src_dir: The given path '{__file__}' is not a directory!",
+    ),
+    (
+        [
+            "sga",
+            "pack",
+            "v2",
+            f"{__file__}/..",
+            os.path.abspath(f"{__file__}/.."),
+            "dummy",
+        ],
+        f"error: argument out_sga: The given path '{os.path.abspath(f'{__file__}/..')}' is not a file!",
+    ),
+    (
+        [
+            "sga",
+            "pack",
+            "v2",
+            f"{__file__}/..",
+            os.path.abspath(f"{__file__}/../newsga.sga"),
+            "dummy",
+        ],
+        f"error: argument config_file: The given path '{'dummy'}' does not exist!",
+    ),
+    (
+        [
+            "sga",
+            "pack",
+            "v2",
+            f"{__file__}/..",
+            os.path.abspath(f"{__file__}/../newsga.sga"),
+            os.path.abspath(f"{__file__}/.."),
+        ],
+        f"error: argument config_file: The given path '{os.path.abspath(f'{__file__}/..')}' is not a file!",
+    ),
 ]
 
 
