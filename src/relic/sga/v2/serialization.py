@@ -3,14 +3,12 @@ Binary Serializers for Relic's SGA-V2
 """
 from __future__ import annotations
 
-import os
 import zlib
 from dataclasses import dataclass
 from typing import BinaryIO, Dict, Tuple, cast, Any
 
 from fs.base import FS
 from relic.core.errors import MismatchError
-from serialization_tools.structx import Struct
 from relic.sga.core import serialization as _s
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.filesystem import registry
@@ -19,8 +17,16 @@ from relic.sga.core.serialization import (
     FileDef,
     ArchivePtrs,
     TocBlock,
-    TOCSerializationInfo, FSDisassembler, FSAssembler, FileLazyInfo, ESSENCE_NAMESPACE, _get_or_write_name, _write_data,
+    TOCSerializationInfo,
+    FSDisassembler,
+    FSAssembler,
+    FileLazyInfo,
+    ESSENCE_NAMESPACE,
+    _get_or_write_name,
+    _write_data,
 )
+from serialization_tools.structx import Struct
+
 from relic.sga.v2.definitions import version
 
 
@@ -142,7 +148,7 @@ def assemble_meta(_: BinaryIO, header: MetaBlock, __: None) -> Dict[str, object]
 
 
 def disassemble_meta(
-        _: BinaryIO, metadata: Dict[str, object]
+    _: BinaryIO, metadata: Dict[str, object]
 ) -> Tuple[MetaBlock, None]:
     """Converts the archive's metadata dictionary into a MetaBlock class the Serializer can use."""
     meta = MetaBlock(
@@ -189,7 +195,9 @@ class _AssassemblerV2(FSAssembler[FileDef]):
         super().assemble_file(parent_dir, file_def)
 
         # Still hate this, but might as well reuse it
-        _HEADER_SIZE = 256 + 8  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 8 byte checksum
+        _HEADER_SIZE = (
+            256 + 8
+        )  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 4 byte unk, and 4 byte checksum (crc32)
         lazy_data_header = FileLazyInfo(
             jump_to=self.ptrs.data_pos + file_def.data_pos - _HEADER_SIZE,
             packed_size=_HEADER_SIZE,
@@ -198,78 +206,72 @@ class _AssassemblerV2(FSAssembler[FileDef]):
             decompress=False,  # header isn't zlib compressed
         )
 
-        lazy_info_comp = FileLazyInfo(
-            jump_to=self.ptrs.data_pos + file_def.data_pos,
-            packed_size=file_def.length_in_archive,
-            unpacked_size=file_def.length_on_disk,
-            stream=self.stream,
-            decompress=False,  # self.decompress_files,
-        )
-
         lazy_info_decomp = FileLazyInfo(
             jump_to=self.ptrs.data_pos + file_def.data_pos,
             packed_size=file_def.length_in_archive,
             unpacked_size=file_def.length_on_disk,
             stream=self.stream,
-            decompress=file_def.storage_type != StorageType.STORE,  # self.decompress_files,
+            decompress=file_def.storage_type
+            != StorageType.STORE,  # self.decompress_files,
         )
 
-        # decomp_buffer = lazy_info_decomp.read()
+        def _generate_checksum2() -> bytes:
+            return zlib.crc32(lazy_info_decomp.read()).to_bytes(
+                4, "little", signed=False
+            )
 
-        # with open("temp.dump","w") as h:
-        #     s = ''.join(format(x, '02x') for x in decomp_buffer)
-        #     print(os.getcwd() + "/temp.dump")
-        #     h.write(s)
-        # raise NotImplementedError
+        def _set_info(_name: str, _csum1: bytes, _csum2: bytes) -> None:
+            essence_info: Dict[str, Any] = dict(
+                parent_dir.getinfo(_name, [ESSENCE_NAMESPACE]).raw[ESSENCE_NAMESPACE]
+            )
+            essence_info["name"] = _name
+            essence_info["unk"] = _csum1
+            essence_info["crc32"] = _csum2
+            info = {ESSENCE_NAMESPACE: essence_info}
+            parent_dir.setinfo(_name, info)
 
-        data_header = lazy_data_header.read()
-        name = data_header[:256].decode("ascii").rstrip("\0")
-        checksum1 = data_header[256:260]
-        checksum1_hex = ' '.join(format(x, '02x') for x in checksum1)
-        checksum1_val = int.from_bytes(checksum1, "little", signed=True)
-        checksum1_valu = int.from_bytes(checksum1, "little", signed=False)
-        checksum2 = data_header[260:264]
-        essence_info: Dict[str, Any] = parent_dir.getinfo(name, [ESSENCE_NAMESPACE]).raw[ESSENCE_NAMESPACE]
-        essence_info["name"] = name
-        essence_info["checksum1"] = checksum1
-        essence_info["checksum2"] = checksum2
+        def _generate_metadata() -> None:
+            name = self.names[file_def.name_pos]
+            checksum1 = b"UNK\0"
+            checksum2 = _generate_checksum2()
+            _set_info(name, checksum1, checksum2)
 
-        decomp_buffer = lazy_info_decomp.read()
-        decomp_crc = zlib.crc32(decomp_buffer)
+        if (
+            lazy_data_header.jump_to < 0
+            or lazy_data_header.jump_to >= lazy_info_decomp.jump_to
+        ):
+            # Ignore checksum / name ~ Archive does not have this metadata
+            # Recalculate it
+            _generate_metadata()
+        else:
+            try:
+                data_header = lazy_data_header.read()
+                if len(data_header) != _HEADER_SIZE:
+                    _generate_metadata()
+                else:
+                    name = data_header[:256].rstrip(b"\0").decode("ascii")
+                    expected_name = self.names[file_def.name_pos]
+                    if name != expected_name:
+                        _generate_metadata()  # assume invalid metadata block
+                    else:
+                        checksum1 = data_header[256:260]
+                        checksum2 = data_header[260:264]
+                        checksum2_gen = _generate_checksum2()
 
-        crc_vs = [zlib.crc32(decomp_buffer[0:x]) for x in range(8 * 16)]
-        crc_bs = [v.to_bytes(4, "little", signed=False) for v in crc_vs]
+                        if checksum2 != checksum2_gen:
+                            raise MismatchError(
+                                "CRC Checksum", checksum2_gen, checksum2
+                            )
 
-        for i, b in enumerate(crc_bs):
-            if b == checksum1:
-                raise NotImplementedError(i)
-
-        # decomp_crc = zlib.crc32(lazy_info_decomp.read())
-        # comp_crc = zlib.crc32(lazy_info_comp.read())
-        # decomp_adler = zlib.adler32(lazy_info_decomp.read())
-        # comp_adler = zlib.adler32(lazy_info_comp.read())
-
-        decomp_crc_le_u = decomp_crc.to_bytes(4, "little", signed=False)
-        # decomp_crc_be_u = decomp_crc.to_bytes(4, "big", signed=False)
-
-        # comp_crc_le_u = comp_crc.to_bytes(4, "little", signed=False)
-        # comp_crc_be_u = comp_crc.to_bytes(4, "big", signed=False)
-
-        # decomp_adler_le_u = decomp_adler.to_bytes(4, "little", signed=False)
-        # decomp_adler_be_u = decomp_adler.to_bytes(4, "big", signed=False)
-
-        # comp_adler_le_u = comp_adler.to_bytes(4, "little", signed=False)
-        # comp_adler_be_u = comp_adler.to_bytes(4, "big", signed=False)
-
-        if checksum2 != decomp_crc_le_u:
-            raise MismatchError("CRC Checksum", decomp_crc_le_u, checksum2)
-
-        info = {ESSENCE_NAMESPACE: essence_info}
-        parent_dir.setinfo(name, info)
+                        _set_info(name, checksum1, checksum2)
+            except UnicodeDecodeError:
+                _generate_metadata()
 
 
 class _DisassassemblerV2(FSDisassembler[FileDef]):
-    _HEADER_SIZE = 256 + 8  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 8 byte checksum
+    _HEADER_SIZE = (
+        256 + 8
+    )  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 8 byte checksum
 
     def disassemble_file(self, container_fs: FS, file_name: str) -> FileDef:
         with container_fs.open(file_name, "rb") as handle:
@@ -286,7 +288,9 @@ class _DisassassemblerV2(FSDisassembler[FileDef]):
             StorageType.BUFFER_COMPRESS,
             StorageType.STREAM_COMPRESS,
         ]:
-            store_data = zlib.compress(data, level=9)  # TODO process in chunks for large files
+            store_data = zlib.compress(
+                data, level=9
+            )  # TODO process in chunks for large files
         else:
             raise NotImplementedError
 
@@ -299,12 +303,21 @@ class _DisassassemblerV2(FSDisassembler[FileDef]):
         )
 
         name_buffer = bytearray(b"\0" * 256)
-        name_buffer[0:len(file_name)] = file_name.encode("ascii")
-        data_header_pos = _write_data(name_buffer, self.data_stream)
+        name_buffer[0 : len(file_name)] = file_name.encode("ascii")
+        _name_buffer_pos = _write_data(name_buffer, self.data_stream)
         uncompressed_crc = zlib.crc32(data)
-        compressed_crc = zlib.crc32(store_data)
-        UNK_CHECKSUM = _write_data(b"UNK\0", self.data_stream)
-        data_checksum_pos = _write_data(uncompressed_crc.to_bytes(4, "little", signed=False), self.data_stream)
+        # compressed_crc = zlib.crc32(store_data)
+        if "unk" in metadata:
+            unk_buffer: bytes = metadata["unk"]  # type: ignore
+        else:
+            unk_buffer = b"UNK\0"
+        if len(unk_buffer) != 4:
+            raise ValueError("SGA-V2 Metadata `Unknown Value` was not a 4 bytes value!")
+        _unk_buffer_pos = _write_data(unk_buffer, self.data_stream)
+
+        _crc_buffer_pos = _write_data(
+            uncompressed_crc.to_bytes(4, "little", signed=False), self.data_stream
+        )  # should always recalc the crc, regardless of the cached value in metadata
         file_def.data_pos = _write_data(store_data, self.data_stream)
 
         return file_def
@@ -316,10 +329,10 @@ class EssenceFSSerializer(_s.EssenceFSSerializer[FileDef, MetaBlock, None]):
     """
 
     def __init__(
-            self,
-            toc_serializer: StreamSerializer[TocBlock],
-            meta_serializer: StreamSerializer[MetaBlock],
-            toc_serialization_info: TOCSerializationInfo[FileDef],
+        self,
+        toc_serializer: StreamSerializer[TocBlock],
+        meta_serializer: StreamSerializer[MetaBlock],
+        toc_serialization_info: TOCSerializationInfo[FileDef],
     ):
         super().__init__(
             version=version,
