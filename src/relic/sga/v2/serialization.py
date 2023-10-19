@@ -3,10 +3,12 @@ Binary Serializers for Relic's SGA-V2
 """
 from __future__ import annotations
 
+import zlib
 from dataclasses import dataclass
-from typing import BinaryIO, Dict, Tuple, cast
+from typing import BinaryIO, Dict, Tuple, cast, Any
 
-from serialization_tools.structx import Struct
+from fs.base import FS
+from relic.core.errors import MismatchError
 from relic.sga.core import serialization as _s
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.filesystem import registry
@@ -16,8 +18,16 @@ from relic.sga.core.serialization import (
     ArchivePtrs,
     TocBlock,
     TOCSerializationInfo,
+    FSDisassembler,
+    FSAssembler,
+    FileLazyInfo,
+    ESSENCE_NAMESPACE,
+    _get_or_write_name,
+    _write_data,
 )
+
 from relic.sga.v2.definitions import version
+from serialization_tools.structx import Struct
 
 
 class FileDefSerializer(StreamSerializer[FileDef]):
@@ -180,6 +190,139 @@ def meta2def(meta: Dict[str, object]) -> FileDef:
     return FileDef(None, None, None, None, meta["storage_type"])  # type: ignore
 
 
+class _AssemblerV2(FSAssembler[FileDef]):
+    def assemble_file(self, parent_dir: FS, file_def: FileDef) -> None:
+        super().assemble_file(parent_dir, file_def)
+
+        # Still hate this, but might as well reuse it
+        _HEADER_SIZE = (
+            256 + 8
+        )  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 4 byte unk, and 4 byte checksum (crc32)
+        lazy_data_header = FileLazyInfo(
+            jump_to=self.ptrs.data_pos + file_def.data_pos - _HEADER_SIZE,
+            packed_size=_HEADER_SIZE,
+            unpacked_size=_HEADER_SIZE,
+            stream=self.stream,
+            decompress=False,  # header isn't zlib compressed
+        )
+
+        lazy_info_decomp = FileLazyInfo(
+            jump_to=self.ptrs.data_pos + file_def.data_pos,
+            packed_size=file_def.length_in_archive,
+            unpacked_size=file_def.length_on_disk,
+            stream=self.stream,
+            decompress=file_def.storage_type
+            != StorageType.STORE,  # self.decompress_files,
+        )
+
+        def _generate_checksum2() -> bytes:
+            return zlib.crc32(lazy_info_decomp.read()).to_bytes(
+                4, "little", signed=False
+            )
+
+        def _set_info(_name: str, _csum1: bytes, _csum2: bytes) -> None:
+            essence_info: Dict[str, Any] = dict(
+                parent_dir.getinfo(_name, [ESSENCE_NAMESPACE]).raw[ESSENCE_NAMESPACE]
+            )
+            essence_info["name"] = _name
+            essence_info["unk"] = _csum1
+            essence_info["crc32"] = _csum2
+            info = {ESSENCE_NAMESPACE: essence_info}
+            parent_dir.setinfo(_name, info)
+
+        def _generate_metadata() -> None:
+            name = self.names[file_def.name_pos]
+            checksum1 = b"UNK\0"
+            checksum2 = _generate_checksum2()
+            _set_info(name, checksum1, checksum2)
+
+        if (
+            lazy_data_header.jump_to < 0
+            or lazy_data_header.jump_to >= lazy_info_decomp.jump_to
+        ):
+            # Ignore checksum / name ~ Archive does not have this metadata
+            # Recalculate it
+            _generate_metadata()
+        else:
+            try:
+                data_header = lazy_data_header.read()
+                if len(data_header) != _HEADER_SIZE:
+                    _generate_metadata()
+                else:
+                    name = data_header[:256].rstrip(b"\0").decode("ascii")
+                    expected_name = self.names[file_def.name_pos]
+                    if name != expected_name:
+                        _generate_metadata()  # assume invalid metadata block
+                    else:
+                        checksum1 = data_header[256:260]
+                        checksum2 = data_header[260:264]
+                        checksum2_gen = _generate_checksum2()
+
+                        if checksum2 != checksum2_gen:
+                            raise MismatchError(
+                                "CRC Checksum", checksum2_gen, checksum2
+                            )
+
+                        _set_info(name, checksum1, checksum2)
+            except UnicodeDecodeError:
+                _generate_metadata()
+
+
+class _DisassassemblerV2(FSDisassembler[FileDef]):
+    _HEADER_SIZE = (
+        256 + 8
+    )  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 8 byte checksum
+
+    def disassemble_file(self, container_fs: FS, file_name: str) -> FileDef:
+        with container_fs.open(file_name, "rb") as handle:
+            data = handle.read()
+
+        metadata = dict(container_fs.getinfo(file_name, ["essence"]).raw["essence"])
+
+        file_def: FileDef = self.meta2def(metadata)
+        _storage_type_value: int = metadata["storage_type"]  # type: ignore
+        storage_type = StorageType(_storage_type_value)
+        if storage_type == StorageType.STORE:
+            store_data = data
+        elif storage_type in [
+            StorageType.BUFFER_COMPRESS,
+            StorageType.STREAM_COMPRESS,
+        ]:
+            store_data = zlib.compress(
+                data, level=9
+            )  # TODO process in chunks for large files
+        else:
+            raise NotImplementedError
+
+        file_def.storage_type = storage_type
+        file_def.length_on_disk = len(data)
+        file_def.length_in_archive = len(store_data)
+
+        file_def.name_pos = _get_or_write_name(
+            file_name, self.name_stream, self.flat_names
+        )
+
+        name_buffer = bytearray(b"\0" * 256)
+        name_buffer[0 : len(file_name)] = file_name.encode("ascii")
+        _name_buffer_pos = _write_data(name_buffer, self.data_stream)
+        uncompressed_crc = zlib.crc32(data)
+        # compressed_crc = zlib.crc32(store_data)
+        if "unk" in metadata:
+            unk_buffer: bytes = metadata["unk"]  # type: ignore
+        else:
+            unk_buffer = b"UNK\0"
+        if len(unk_buffer) != 4:
+            raise ValueError("SGA-V2 Metadata `Unknown Value` was not a 4 bytes value!")
+        _unk_buffer_pos = _write_data(unk_buffer, self.data_stream)
+
+        _crc_buffer_pos = _write_data(
+            uncompressed_crc.to_bytes(4, "little", signed=False), self.data_stream
+        )  # should always recalc the crc, regardless of the cached value in metadata
+        file_def.data_pos = _write_data(store_data, self.data_stream)
+
+        return file_def
+
+
 class EssenceFSSerializer(_s.EssenceFSSerializer[FileDef, MetaBlock, None]):
     """
     Serializer to read/write an SGA file to/from a stream from/to a SGA File System
@@ -203,6 +346,8 @@ class EssenceFSSerializer(_s.EssenceFSSerializer[FileDef, MetaBlock, None]):
             gen_empty_meta=MetaBlock.default,
             finalize_meta=recalculate_md5,
             meta2def=meta2def,
+            assembler=_AssemblerV2,
+            disassembler=_DisassassemblerV2,
         )
 
 

@@ -1,13 +1,17 @@
 import json
 import os
+import typing
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from relic.sga.core.filesystem import EssenceFS
+import fs
 from relic.core.cli import CliPlugin, _SubParsersAction
-from relic.sga.v2.serialization import essence_fs_serializer as v2_serializer
+from relic.sga.core.cli import _get_dir_type_validator, _get_file_type_validator
 from relic.sga.core.definitions import StorageType
+from relic.sga.core.filesystem import EssenceFS
+
+from relic.sga.v2.serialization import essence_fs_serializer as v2_serializer
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
@@ -38,9 +42,21 @@ class RelicSgaPackV2Cli(CliPlugin):
         else:
             parser = command_group.add_parser("v2")
 
-        parser.add_argument("src_dir", type=str, help="Source Directory")
-        parser.add_argument("out_sga", type=str, help="Output SGA File")
-        parser.add_argument("config_file", type=str, help="Config .json file")
+        parser.add_argument(
+            "src_dir",
+            type=_get_dir_type_validator(exists=True),
+            help="Source Directory",
+        )
+        parser.add_argument(
+            "out_sga",
+            type=_get_file_type_validator(exists=False),
+            help="Output SGA File",
+        )
+        parser.add_argument(
+            "config_file",
+            type=_get_file_type_validator(exists=True),
+            help="Config .json file",
+        )
 
         return parser
 
@@ -57,10 +73,10 @@ class RelicSgaPackV2Cli(CliPlugin):
 
         # Create 'SGA'
         sga = EssenceFS()
-        name = os.path.basename(outfile)
+        archive_name = os.path.basename(outfile)
         sga.setmeta(
             {
-                "name": name,  # Specify name of archive
+                "name": archive_name,  # Specify name of archive
                 "header_md5": "0"
                 * 16,  # Must be present due to a bug, recalculated when packed
                 "file_md5": "0"
@@ -71,7 +87,9 @@ class RelicSgaPackV2Cli(CliPlugin):
 
         # Walk Drives
         for alias, drive in config.items():
-            print(f"\tPacking Drive `{alias}`")
+            name = drive["name"]
+
+            print(f"\tPacking Drive `{name}` w/ alias `{alias}`")
             sga_drive = None  # sga.create_drive(alias)
 
             # CWD for drive operations
@@ -115,7 +133,7 @@ class RelicSgaPackV2Cli(CliPlugin):
                     if (
                         sga_drive is None
                     ):  # Lazily create drive, to avoid empty drives from being created
-                        sga_drive = sga.create_drive(alias)
+                        sga_drive = sga.create_drive(alias, name)
 
                     with open(full_path, "rb") as unpacked_file:
                         parent, file = os.path.split(path_in_sga)
@@ -137,3 +155,58 @@ class RelicSgaPackV2Cli(CliPlugin):
         print(f"\tDone!")
 
         return None
+
+
+class RelicSgaRepackV2Cli(CliPlugin):
+    def _create_parser(
+        self, command_group: Optional[_SubParsersAction] = None
+    ) -> ArgumentParser:
+        parser: ArgumentParser
+        if command_group is None:
+            parser = ArgumentParser("v2")
+        else:
+            parser = command_group.add_parser("v2")
+
+        parser.add_argument(
+            "in_sga", type=_get_file_type_validator(exists=True), help="Input SGA File"
+        )
+        parser.add_argument(
+            "out_sga",
+            nargs="?",
+            type=_get_file_type_validator(exists=False),
+            help="Output SGA File",
+            default=None,
+        )
+
+        return parser
+
+    def command(self, ns: Namespace) -> Optional[int]:
+        # Extract Args
+        in_sga: str = ns.in_sga
+        out_sga: str = ns.out_sga
+
+        # Execute Command
+
+        if out_sga is None:
+            out_sga = in_sga
+            print(f"Re-Packing `{in_sga}`")
+        else:
+            print(f"Re-Packing `{in_sga}` as `{out_sga}`")
+        # Create 'SGA'
+        print(f"\tReading `{in_sga}`")
+        with fs.open_fs(f"sga://{in_sga}") as sga:
+            sga = typing.cast(EssenceFS, sga)  # mypy hack
+            # Write to binary file:
+            print(f"\tWriting `{out_sga}`")
+            with open(out_sga, "wb") as sga_file:
+                v2_serializer.write(sga_file, sga)
+            print(f"\tDone!")
+
+        return None
+
+
+if __name__ == "__main__":
+    # shortcut to root cli
+    from relic.core.cli import cli_root
+
+    cli_root.run()
