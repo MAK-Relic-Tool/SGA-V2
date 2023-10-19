@@ -1,4 +1,3 @@
-import argparse
 import json
 import os
 import typing
@@ -7,11 +6,12 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 
 import fs
-from relic.sga.core.filesystem import EssenceFS
 from relic.core.cli import CliPlugin, _SubParsersAction
-from relic.sga.v2.serialization import essence_fs_serializer as v2_serializer
-from relic.sga.core.definitions import StorageType
 from relic.sga.core.cli import _get_dir_type_validator, _get_file_type_validator
+from relic.sga.core.definitions import StorageType
+from relic.sga.core.filesystem import EssenceFS
+
+from relic.sga.v2.serialization import essence_fs_serializer as v2_serializer
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
