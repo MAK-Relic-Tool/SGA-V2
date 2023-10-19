@@ -3,10 +3,9 @@ TestCases for more explicit errors when providing invalid path arguments.
 https://github.com/MAK-Relic-Tool/Issue-Tracker/issues/40
 """
 import io
-import os.path
+from contextlib import redirect_stderr
 from pathlib import Path
 from typing import Iterable
-from contextlib import redirect_stderr
 
 import pytest
 

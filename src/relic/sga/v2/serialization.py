@@ -25,9 +25,9 @@ from relic.sga.core.serialization import (
     _get_or_write_name,
     _write_data,
 )
-from serialization_tools.structx import Struct
 
 from relic.sga.v2.definitions import version
+from serialization_tools.structx import Struct
 
 
 class FileDefSerializer(StreamSerializer[FileDef]):
