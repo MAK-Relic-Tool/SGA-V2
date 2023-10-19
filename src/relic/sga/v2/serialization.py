@@ -190,7 +190,7 @@ def meta2def(meta: Dict[str, object]) -> FileDef:
     return FileDef(None, None, None, None, meta["storage_type"])  # type: ignore
 
 
-class _AssassemblerV2(FSAssembler[FileDef]):
+class _AssemblerV2(FSAssembler[FileDef]):
     def assemble_file(self, parent_dir: FS, file_def: FileDef) -> None:
         super().assemble_file(parent_dir, file_def)
 
@@ -346,7 +346,7 @@ class EssenceFSSerializer(_s.EssenceFSSerializer[FileDef, MetaBlock, None]):
             gen_empty_meta=MetaBlock.default,
             finalize_meta=recalculate_md5,
             meta2def=meta2def,
-            assembler=_AssassemblerV2,
+            assembler=_AssemblerV2,
             disassembler=_DisassassemblerV2,
         )
 
