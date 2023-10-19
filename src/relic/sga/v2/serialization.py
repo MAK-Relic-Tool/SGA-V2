@@ -3,6 +3,7 @@ Binary Serializers for Relic's SGA-V2
 """
 from __future__ import annotations
 
+import time
 import zlib
 from dataclasses import dataclass
 from typing import BinaryIO, Dict, Tuple, cast, Any
@@ -215,26 +216,30 @@ class _AssemblerV2(FSAssembler[FileDef]):
             != StorageType.STORE,  # self.decompress_files,
         )
 
-        def _generate_checksum2() -> bytes:
+        def _generate_crc32() -> bytes:
             return zlib.crc32(lazy_info_decomp.read()).to_bytes(
                 4, "little", signed=False
             )
 
-        def _set_info(_name: str, _csum1: bytes, _csum2: bytes) -> None:
+        def _set_info(_name: str, _modified: int, _crc32: bytes) -> None:
             essence_info: Dict[str, Any] = dict(
                 parent_dir.getinfo(_name, [ESSENCE_NAMESPACE]).raw[ESSENCE_NAMESPACE]
             )
             essence_info["name"] = _name
-            essence_info["unk"] = _csum1
-            essence_info["crc32"] = _csum2
+            essence_info["modified"] = _modified
+            essence_info["crc32"] = _crc32
             info = {ESSENCE_NAMESPACE: essence_info}
             parent_dir.setinfo(_name, info)
 
         def _generate_metadata() -> None:
             name = self.names[file_def.name_pos]
-            checksum1 = b"UNK\0"
-            checksum2 = _generate_checksum2()
-            _set_info(name, checksum1, checksum2)
+
+            info = parent_dir.getinfo(name, ["details"])
+            timestamp = info.get("details", "modified", time.time())
+            modified = int(timestamp)  # .to_bytes(4, "little", signed=False)
+
+            crc32 = _generate_crc32()
+            _set_info(name, modified, crc32)
 
         if (
             lazy_data_header.jump_to < 0
@@ -254,16 +259,17 @@ class _AssemblerV2(FSAssembler[FileDef]):
                     if name != expected_name:
                         _generate_metadata()  # assume invalid metadata block
                     else:
-                        checksum1 = data_header[256:260]
-                        checksum2 = data_header[260:264]
-                        checksum2_gen = _generate_checksum2()
+                        modified_buffer: bytes = data_header[256:260]
+                        modified = int.from_bytes(
+                            modified_buffer, "little", signed=False
+                        )
+                        crc32 = data_header[260:264]
+                        crc32_generated = _generate_crc32()
 
-                        if checksum2 != checksum2_gen:
-                            raise MismatchError(
-                                "CRC Checksum", checksum2_gen, checksum2
-                            )
+                        if crc32 != crc32_generated:
+                            raise MismatchError("CRC Checksum", crc32_generated, crc32)
 
-                        _set_info(name, checksum1, checksum2)
+                        _set_info(name, modified, crc32)
             except UnicodeDecodeError:
                 _generate_metadata()
 
@@ -307,13 +313,27 @@ class _DisassassemblerV2(FSDisassembler[FileDef]):
         _name_buffer_pos = _write_data(name_buffer, self.data_stream)
         uncompressed_crc = zlib.crc32(data)
         # compressed_crc = zlib.crc32(store_data)
-        if "unk" in metadata:
-            unk_buffer: bytes = metadata["unk"]  # type: ignore
+        if "modified" in metadata and metadata["modified"] != int.from_bytes(
+            b"UNK\0", "little", signed=False
+        ):  # handle my unknown case ~ UNK\0 resolves to 1970, so I don't think we need to worry about that
+            timestamp: int = metadata["modified"]  # type: ignore
+            timestamp_buffer = timestamp.to_bytes(4, "little", signed=True)
+
+            # if creation/modification are different, use the new timestamp
+            # Cumbersome, but allows header MD5s to invalidate
+            info = container_fs.getinfo(file_name, ["details"])
+            modified = info.get("details", "modified", None)
+            created = info.get("details", "created", None)
+            if modified is not None and created is not None:
+                if int(modified) - int(created) != 0:
+                    timestamp_buffer = int(modified).to_bytes(4, "little", signed=False)
+
         else:
-            unk_buffer = b"UNK\0"
-        if len(unk_buffer) != 4:
-            raise ValueError("SGA-V2 Metadata `Unknown Value` was not a 4 bytes value!")
-        _unk_buffer_pos = _write_data(unk_buffer, self.data_stream)
+            info = container_fs.getinfo(file_name, ["details"])
+            timestamp: float = info.get("details", "modified", time.time())  # type: ignore
+            timestamp_buffer = int(timestamp).to_bytes(4, "little", signed=False)
+
+        _unk_buffer_pos = _write_data(timestamp_buffer, self.data_stream)
 
         _crc_buffer_pos = _write_data(
             uncompressed_crc.to_bytes(4, "little", signed=False), self.data_stream
