@@ -64,7 +64,7 @@ class TestEssenceFSOpener:
 # Hack to get "SampleSGA-v2" from the sample data
 _sample_path_on_disk = [f for f in v2_test_files if "SampleSGA-v2.sga" in f][0]
 _sample_drives = ["test"]
-_UNK = b"UNK\0"
+_MODIFIED = 1697739416
 _sample_data = b"Ready to unleash 11 barrels of lead.\nWhere's that artillery?!?!\nOrks are da biggust and da strongest.\nFix bayonets!\nFear me, but follow!\nCall for an earth-shaker?\nMy mind is too weary to fight on...\nWe'll be off as soon as the fuel arrives.\nWhere are those tech priests.\nFire until they see the glow of our barrels!"
 _CRC32 = zlib.crc32(_sample_data).to_bytes(4, "little", signed=False)
 _store_txt = {
@@ -75,7 +75,7 @@ _store_txt = {
         "essence": {
             "storage_type": int(StorageType.STORE),
             "name": "STORE.txt",
-            "unk": _UNK,
+            "modified": _MODIFIED,
             "crc32": _CRC32,
         },
     },
@@ -89,7 +89,7 @@ _buffer_txt = {
         "essence": {
             "storage_type": int(StorageType.BUFFER_COMPRESS),
             "name": "BUFFER.txt",
-            "unk": _UNK,
+            "modified": _MODIFIED,
             "crc32": _CRC32,
         },
     },
@@ -103,7 +103,7 @@ _stream_txt = {
         "essence": {
             "storage_type": int(StorageType.STREAM_COMPRESS),
             "name": "STREAM.txt",
-            "unk": _UNK,
+            "modified": _MODIFIED,
             "crc32": _CRC32,
         },
     },
@@ -121,7 +121,7 @@ _sample_file_descriptions = [_store_txt]
 _sample_meta = [
     {
         "name": "SampleSGA-v2",
-        "file_md5": "c2e05c8d56e6ea19956b5ec1dbb28ab8",
+        "file_md5": "facecd6df030c790e8bee02bcd7728a6",
         "header_md5": "ba4d641eb08a4c9fc95e4b3bf61cf390",
         "version": {"major": 2, "minor": 0},
     }
