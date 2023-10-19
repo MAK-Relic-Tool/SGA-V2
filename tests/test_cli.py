@@ -131,3 +131,21 @@ def test_cli_unpack_pack_one_to_one(src: str):
                 os.unlink(repacked_file_name)
             except:
                 ...
+
+
+@pytest.mark.parametrize("src", argvalues=_SAMPLES, ids=_SAMPLES)
+def test_cli_repack(src: str):
+    from relic.core.cli import cli_root as cli
+
+    repacked_file_name = None
+    try:
+        with tempfile.NamedTemporaryFile("w+", delete=False) as config_file:
+            repacked_file_name = config_file.name
+
+        status = cli.run_with("sga", "repack", "v2",  src, repacked_file_name)
+        assert status == 0
+    finally:
+        try:
+            os.unlink(repacked_file_name)
+        except:
+            ...
