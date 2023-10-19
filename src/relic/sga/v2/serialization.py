@@ -149,7 +149,7 @@ def assemble_meta(_: BinaryIO, header: MetaBlock, __: None) -> Dict[str, object]
 
 
 def disassemble_meta(
-        _: BinaryIO, metadata: Dict[str, object]
+    _: BinaryIO, metadata: Dict[str, object]
 ) -> Tuple[MetaBlock, None]:
     """Converts the archive's metadata dictionary into a MetaBlock class the Serializer can use."""
     meta = MetaBlock(
@@ -197,7 +197,7 @@ class _AssemblerV2(FSAssembler[FileDef]):
 
         # Still hate this, but might as well reuse it
         _HEADER_SIZE = (
-                256 + 8
+            256 + 8
         )  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 4 byte unk, and 4 byte checksum (crc32)
         lazy_data_header = FileLazyInfo(
             jump_to=self.ptrs.data_pos + file_def.data_pos - _HEADER_SIZE,
@@ -213,7 +213,7 @@ class _AssemblerV2(FSAssembler[FileDef]):
             unpacked_size=file_def.length_on_disk,
             stream=self.stream,
             decompress=file_def.storage_type
-                       != StorageType.STORE,  # self.decompress_files,
+            != StorageType.STORE,  # self.decompress_files,
         )
 
         def _generate_crc32() -> bytes:
@@ -242,8 +242,8 @@ class _AssemblerV2(FSAssembler[FileDef]):
             _set_info(name, modified, crc32)
 
         if (
-                lazy_data_header.jump_to < 0
-                or lazy_data_header.jump_to >= lazy_info_decomp.jump_to
+            lazy_data_header.jump_to < 0
+            or lazy_data_header.jump_to >= lazy_info_decomp.jump_to
         ):
             # Ignore checksum / name ~ Archive does not have this metadata
             # Recalculate it
@@ -276,7 +276,7 @@ class _AssemblerV2(FSAssembler[FileDef]):
 
 class _DisassassemblerV2(FSDisassembler[FileDef]):
     _HEADER_SIZE = (
-            256 + 8
+        256 + 8
     )  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 8 byte checksum
 
     def disassemble_file(self, container_fs: FS, file_name: str) -> FileDef:
@@ -309,12 +309,12 @@ class _DisassassemblerV2(FSDisassembler[FileDef]):
         )
 
         name_buffer = bytearray(b"\0" * 256)
-        name_buffer[0: len(file_name)] = file_name.encode("ascii")
+        name_buffer[0 : len(file_name)] = file_name.encode("ascii")
         _name_buffer_pos = _write_data(name_buffer, self.data_stream)
         uncompressed_crc = zlib.crc32(data)
         # compressed_crc = zlib.crc32(store_data)
         if "modified" in metadata and metadata["modified"] != int.from_bytes(
-                b"UNK\0", "little", signed=False
+            b"UNK\0", "little", signed=False
         ):  # handle my unknown case ~ UNK\0 resolves to 1970, so I don't think we need to worry about that
             timestamp: int = metadata["modified"]  # type: ignore
             timestamp_buffer = timestamp.to_bytes(4, "little", signed=True)
@@ -349,10 +349,10 @@ class EssenceFSSerializer(_s.EssenceFSSerializer[FileDef, MetaBlock, None]):
     """
 
     def __init__(
-            self,
-            toc_serializer: StreamSerializer[TocBlock],
-            meta_serializer: StreamSerializer[MetaBlock],
-            toc_serialization_info: TOCSerializationInfo[FileDef],
+        self,
+        toc_serializer: StreamSerializer[TocBlock],
+        meta_serializer: StreamSerializer[MetaBlock],
+        toc_serialization_info: TOCSerializationInfo[FileDef],
     ):
         super().__init__(
             version=version,
