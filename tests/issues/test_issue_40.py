@@ -4,52 +4,60 @@ https://github.com/MAK-Relic-Tool/Issue-Tracker/issues/40
 """
 import io
 import os.path
+from pathlib import Path
 from typing import Iterable
 from contextlib import redirect_stderr
 
 import pytest
 
+_F = Path(__file__)
+_DIR = _F.parent
+_DIR_THAT_DOESNT_EXIST = _DIR / "nonexistant_directory"
+_SGA_CREATE = _DIR / "created.sga"
+_PH_SGA = "placeholder.sga"
+_PH_CONFIG = "placeholder_config.json"
+
 _ARGS = [
     (
-        ["sga", "pack", "v2", f"{__file__}/nonexistant_dir", "dummy", "dummy"],
-        f"error: argument src_dir: The given path '{__file__}/nonexistant_dir' does not exist!",
+        ["sga", "pack", "v2", str(_DIR_THAT_DOESNT_EXIST), _PH_SGA, _PH_CONFIG],
+        f"error: argument src_dir: The given path '{str(_DIR_THAT_DOESNT_EXIST)}' does not exist!",
     ),
     (
-        ["sga", "pack", "v2", __file__, "dummy", "dummy"],
-        f"error: argument src_dir: The given path '{__file__}' is not a directory!",
-    ),
-    (
-        [
-            "sga",
-            "pack",
-            "v2",
-            f"{__file__}/..",
-            os.path.abspath(f"{__file__}/.."),
-            "dummy",
-        ],
-        f"error: argument out_sga: The given path '{os.path.abspath(f'{__file__}/..')}' is not a file!",
+        ["sga", "pack", "v2", str(_F), "dummy", "dummy"],
+        f"error: argument src_dir: The given path '{str(_F)}' is not a directory!",
     ),
     (
         [
             "sga",
             "pack",
             "v2",
-            f"{__file__}/..",
-            os.path.abspath(f"{__file__}/../newsga.sga"),
-            "dummy",
+            str(_DIR),
+            str(_DIR),
+            _PH_CONFIG,
         ],
-        f"error: argument config_file: The given path '{'dummy'}' does not exist!",
+        f"error: argument out_sga: The given path '{str(_DIR)}' is not a file!",
     ),
     (
         [
             "sga",
             "pack",
             "v2",
-            f"{__file__}/..",
-            os.path.abspath(f"{__file__}/../newsga.sga"),
-            os.path.abspath(f"{__file__}/.."),
+            str(_DIR),
+            str(_SGA_CREATE),
+            _PH_CONFIG,
         ],
-        f"error: argument config_file: The given path '{os.path.abspath(f'{__file__}/..')}' is not a file!",
+        f"error: argument config_file: The given path '{str(_PH_CONFIG)}' does not exist!",
+    ),
+    (
+        [
+            "sga",
+            "pack",
+            "v2",
+            str(_DIR),
+            str(_SGA_CREATE),
+            str(_DIR),
+        ],
+        f"error: argument config_file: The given path '{str(_DIR)}' is not a file!",
     ),
 ]
 _ARGS2 = [
