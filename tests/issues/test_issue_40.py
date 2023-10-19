@@ -4,7 +4,7 @@ https://github.com/MAK-Relic-Tool/Issue-Tracker/issues/40
 """
 import io
 import os.path
-from collections import Sequence
+from typing import Iterable
 from contextlib import redirect_stderr
 
 import pytest
@@ -52,10 +52,15 @@ _ARGS = [
         f"error: argument config_file: The given path '{os.path.abspath(f'{__file__}/..')}' is not a file!",
     ),
 ]
+_ARGS2 = [
+    ([av.replace("\\", "/") for av in a], b.replace("\\", "/")) for (a, b) in _ARGS
+]
+
+_ = _ARGS2
 
 
-@pytest.mark.parametrize(["args", "msg"], _ARGS)
-def test_argparse_error(args: Sequence[str], msg: str):
+@pytest.mark.parametrize(["args", "msg"], [*_ARGS, *_ARGS2])
+def test_argparse_error(args: Iterable[str], msg: str):
     from relic.core.cli import cli_root
 
     with io.StringIO() as f:
@@ -64,5 +69,7 @@ def test_argparse_error(args: Sequence[str], msg: str):
             assert status == 2
         f.seek(0)
         err = f.read()
-        print(err)
+
+        if msg not in err:  # Dumb, but helps avoid blaot
+            print(err)
         assert msg in err
