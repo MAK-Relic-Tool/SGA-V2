@@ -6,7 +6,7 @@ from typing import List, Iterable, Any, Dict
 import fs
 import pytest
 from relic.sga.core import MagicWord, Version, StorageType
-from relic.sga.core.filesystem import EssenceFS
+from relic.sga.core.essencesfs import EssenceFS
 
 from relic.sga import v2
 
