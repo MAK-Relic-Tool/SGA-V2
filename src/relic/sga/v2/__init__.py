@@ -5,7 +5,7 @@ from relic.sga.v2.definitions import (
     version,
 )
 
-from relic.sga.v2.serialization import essence_fs_serializer as EssenceFSHandler
+from relic.sga.v2.opener import essence_fs_serializer as EssenceFSHandler
 
 __version__ = "2.0.0"
 

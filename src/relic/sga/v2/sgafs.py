@@ -23,6 +23,7 @@ from fs import ResourceType
 from fs.base import FS
 from fs.info import Info
 from fs.mode import Mode
+from fs.subfs import SubFS
 from relic.core.errors import RelicToolError
 from relic.sga.core import StorageType
 from relic.sga.core.hashtools import crc32
@@ -33,12 +34,13 @@ from relic.sga.core.serialization import (
     SgaTocDrive,
 )
 
-from relic.sga.v2 import version
+from relic.sga.v2.definitions import version
 from relic.sga.v2.serialization import (
     SgaTocFileDataV2Dow,
     SgaTocFileV2Dow,
     RelicDateTimeSerializer,
     SgaFileV2,
+    SgaV2GameFormat,
 )
 
 NS_BASIC = "basic"
@@ -88,8 +90,7 @@ class SgaPathResolver:
             elif full_path[0] != cls.ROOT:
                 full_path = cls.ROOT + full_path
             return f"{alias}:{full_path}"
-        else:
-            return full_path
+        return full_path
 
     @classmethod
     def parse(cls, path: str) -> Tuple[Optional[str], str]:
@@ -104,11 +105,23 @@ class SgaPathResolver:
         return path.replace("\\", cls.SEP)
 
     @classmethod
-    def split_parts(cls, path: str) -> List[str]:
+    def split_parts(cls, path: str, include_root: bool = True) -> List[str]:
         path = cls.fix_seperator(path)
+
+        if path == cls.ROOT:  # Handle special case
+            if include_root:
+                return [cls.ROOT]
+            return []
+
+        if len(path) == 0:
+            return []
+
         parts = path.split(cls.SEP)
         if parts[0] == "" and path[0] == cls.SEP:  # captured root
-            parts[0] = cls.ROOT
+            if include_root:
+                parts[0] = cls.ROOT
+            else:
+                parts = parts[1:]
         return parts
 
     @classmethod
@@ -132,8 +145,7 @@ class SgaPathResolver:
         parts = cls.split_parts(path)
         if len(parts) > 0:
             return cls.join(*parts[:-1]), parts[-1]
-        else:
-            return "", path
+        return "", path
 
     @classmethod
     def basename(cls, path):
@@ -152,7 +164,7 @@ class _SgaFsFileV2:
     def close(self):
         raise NotImplementedError()
 
-    def getinfo(self, namespaces: Collection[str]) -> Info:
+    def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
         raise NotImplementedError()
 
     def setinfo(self, info: Mapping[str, Mapping[str, object]]):
@@ -181,14 +193,23 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
         self._info = info
         self._data_info = data
 
+    @property
+    def name(self) -> str:
+        with self._lock:
+            return self._data_info.name
+
     def close(self):
         pass
 
-    def getinfo(self, namespaces: Collection[str]) -> Info:
+    def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
+        if namespaces is None:
+            namespaces = []
+
+        info = {NS_BASIC: build_ns_basic(self.name, False)}
+
         with self._lock:
-            info = {NS_BASIC: build_ns_basic(self._info.name, False)}
             if NS_DETAILS in namespaces:
-                modified_unix = self._data_info.header().modified
+                modified_unix = self._data_info.header.modified
                 modified_datetime = RelicDateTimeSerializer.unix2datetime(modified_unix)
                 info[NS_DETAILS] = build_ns_details(
                     ResourceType.file,
@@ -196,7 +217,7 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
                     modified=modified_datetime,
                 )
             if NS_ESSENCE in namespaces:
-                info["crc32"] = self._data_info.header().crc32
+                info["crc32"] = self._data_info.header.crc32
                 info["storage_type"] = self._info.storage_type
             return Info(info)
 
@@ -214,18 +235,18 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
             )
 
         with self._lock:
-            yield self._data_info.data()
+            yield self._data_info.data(decompress=True)
 
     def verify_crc32(self, error: bool) -> bool:
-        hasher = crc32()
+        hasher = crc32(start=0)
         # Locking should be handled by opening file, no need to lock here
         with self.openbin("r") as stream:
-            expected = self._data_info.header().crc32
+            expected = self._data_info.header.crc32
             if error:
                 hasher.validate(stream, expected, name=f"File '{self.name}' CRC32")
                 return True
-            else:
-                return hasher.check(stream, expected)
+
+            return hasher.check(stream, expected)
 
     def recalculate_crc32(self):
         raise RelicToolError(
@@ -276,11 +297,11 @@ class SgaFsFileV2Mem(_SgaFsFileV2):
     def name(self) -> str:
         return self._name
 
-    def getinfo(self, namespaces: Collection[str]) -> Info:
+    def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
         info = {NS_BASIC: build_ns_basic(self.name, False)}
         if NS_DETAILS in namespaces:
             info[NS_DETAILS] = build_ns_details(
-                ResourceType.file, self._handle.name, modified=self._modified
+                ResourceType.file, self._size, modified=self._modified
             )
         if NS_ESSENCE in namespaces:
             info["crc32"] = self._crc32
@@ -313,8 +334,8 @@ class SgaFsFileV2Mem(_SgaFsFileV2):
             if error:
                 hasher.validate(stream, expected)
                 return True
-            else:
-                return hasher.check(stream, expected)
+
+            return hasher.check(stream, expected)
 
     def recalculate_crc32(self):
         hasher = crc32(start=0)
@@ -332,7 +353,7 @@ class SgaFsFileV2(_SgaFsFileV2):
             raise RelicToolError(
                 "File trying to be created as both a lazy and in-memory file!"
             )
-        elif lazy is None and mem is None:
+        if lazy is None and mem is None:
             raise RelicToolError(
                 "File trying to be created without specifying lazy/in-memory!"
             )
@@ -343,7 +364,7 @@ class SgaFsFileV2(_SgaFsFileV2):
     def close(self):
         return self._backing.close()
 
-    def _convert_to_memfile(self):
+    def _unlazy(self):
         if not self._is_lazy:
             return
         self._is_lazy = False
@@ -357,24 +378,32 @@ class SgaFsFileV2(_SgaFsFileV2):
                 crc=info[NS_ESSENCE]["crc32"],
             )
 
-    def getinfo(self, namespaces: Collection[str]) -> Info:
+    @property
+    def name(self) -> str:
+        return self._backing.name
+
+    def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
+        if namespaces is None:
+            namespaces = []
         return self._backing.getinfo(namespaces)
 
     def setinfo(self, info: Mapping[str, Mapping[str, object]]):
-        self._convert_to_memfile()
+        self._unlazy()
         self.setinfo(info)
 
     def openbin(self, mode: str) -> BinaryIO:
         _mode = Mode(mode)
         if _mode.writing:
-            self._convert_to_memfile()
-        return self._backing.openbin(mode)  # child instances handle context management
+            self._unlazy()
+        # child instances handle context management
+        with self._backing.openbin(mode) as stream:
+            return stream
 
     def verify_crc32(self, error: bool) -> bool:
         return self._backing.verify_crc32(error)
 
     def recalculate_crc32(self):
-        self._convert_to_memfile()
+        self._unlazy()
         self._backing.recalculate_crc32()
 
 
@@ -422,11 +451,11 @@ class _SgaFsFolderV2:
     def remove_folder(self, name: str):
         raise NotImplementedError
 
+    def empty(self) -> bool:
+        pass
+
 
 class SgaFsFolderV2Mem(_SgaFsFolderV2):
-    def get_child(self, name: str) -> Optional[Union[_SgaFsFileV2, _SgaFsFolderV2]]:
-        return self._children.get(name)
-
     def __init__(self, name: str):
         self._name = name
         self._children: Dict[str, Union[_SgaFsFolderV2, _SgaFsFileV2]] = {}
@@ -473,6 +502,35 @@ class SgaFsFolderV2Mem(_SgaFsFolderV2):
     def scandir(self) -> Iterable[str]:
         return list(self._children.keys())
 
+    def get_child(self, name: str) -> Optional[Union[_SgaFsFileV2, _SgaFsFolderV2]]:
+        return self._children.get(name)
+
+    def remove_file(self, name: str):
+        if name not in self._children:
+            raise fs.errors.ResourceNotFound(name)
+        if name not in self._files:
+            raise fs.errors.FileExpected(name)
+        self._files[name].close()  # close bytes
+        del self._files[name]
+
+    def remove_folder(self, name: str):
+        if name not in self._children:
+            raise fs.errors.ResourceNotFound(name)
+        if name not in self._folders:
+            raise fs.errors.DirectoryExpected(name)
+        if not self._folders[name].empty():
+            raise fs.errors.DirectoryNotEmpty(name)
+
+        del self._folders[name]
+
+    def remove_child(self, name: str):
+        if name in self._folders:
+            self.remove_folder(name)
+        elif name in self._files:
+            self.remove_file(name)
+        else:
+            raise fs.errors.ResourceNotFound(name)
+
 
 class SgaFsFolderV2Lazy(_SgaFsFolderV2):
     def __init__(
@@ -488,8 +546,6 @@ class SgaFsFolderV2Lazy(_SgaFsFolderV2):
         self._data_window = data_window
         self._all_files = all_files
         self._all_folders = all_folders
-        self._filenames = None
-        self._foldernames = None
         self._files = None
         self._folders = None
 
@@ -510,18 +566,19 @@ class SgaFsFolderV2Lazy(_SgaFsFolderV2):
         )
 
     def scandir(self) -> Iterable[str]:
-        return list(*self._files.keys() * self._folders.keys())
+        return [*self._files_lookup.keys(), *self._folder_lookup.keys()]
 
     def get_child(self, name: str) -> Optional[Union[_SgaFsFileV2, _SgaFsFolderV2]]:
         if name in self._files_lookup:
             return self._files_lookup[name]
-        elif name in self._folder_lookup:
+        if name in self._folder_lookup:
             return self._folder_lookup[name]
         return None
 
     @property
     def name(self):
-        return self._name_window.get_name(self._info.name_offset)
+        full_path = self._name_window.get_name(self._info.name_offset)
+        return SgaPathResolver.basename(full_path)
 
     @property
     def _files_lookup(self):
@@ -547,6 +604,15 @@ class SgaFsFolderV2Lazy(_SgaFsFolderV2):
     def folders(self) -> List[SgaFsFolderV2]:
         return list(self._folders.values)
 
+    def remove_file(self, name: str):
+        raise RelicToolError("Cannot remove a file from a Lazy folder!")
+
+    def remove_folder(self, name: str):
+        raise RelicToolError("Cannot remove a folder from a Lazy folder!")
+
+    def remove_child(self, name: str):
+        raise RelicToolError("Cannot remove a resource from a Lazy folder!")
+
 
 class SgaFsFolderV2(_SgaFsFolderV2):
     def __init__(
@@ -558,7 +624,7 @@ class SgaFsFolderV2(_SgaFsFolderV2):
             raise RelicToolError(
                 "Folder trying to be created as both a lazy and in-memory folder!"
             )
-        elif lazy is None and mem is None:
+        if lazy is None and mem is None:
             raise RelicToolError(
                 "Folder trying to be created without specifying lazy/in-memory!"
             )
@@ -566,7 +632,7 @@ class SgaFsFolderV2(_SgaFsFolderV2):
         self._is_lazy: bool = lazy is not None
         self._backing: _SgaFsFolderV2 = lazy or mem  # type: ignore # at least one will not be None
 
-    def _convert_to_memfolder(self):
+    def _unlazy(self):
         if not self._is_lazy:
             return
         self._is_lazy = False
@@ -577,11 +643,21 @@ class SgaFsFolderV2(_SgaFsFolderV2):
         for file in self._backing.files:
             root.add_file(file)
 
-    def getinfo(self, namespaces: Collection[str]) -> Info:
+    def _unlazy_children(self):
+        for child in self._backing.files:
+            if hasattr(child, "_unlazy"):
+                child._unlazy()
+        for child in self._backing.folders:
+            if hasattr(child, "_unlazy"):
+                child._unlazy()
+            if hasattr(child, "_unlazy_children"):
+                child._unlazy_children()
+
+    def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
         return self._backing.getinfo(namespaces)
 
     def setinfo(self, info: Mapping[str, Mapping[str, object]]):
-        self._convert_to_memfolder()
+        self._unlazy()
         self.setinfo(info)
 
     @property
@@ -589,11 +665,11 @@ class SgaFsFolderV2(_SgaFsFolderV2):
         return self._backing.name
 
     def add_file(self, file: _SgaFsFileV2):
-        self._convert_to_memfolder()
+        self._unlazy()
         return self._backing.add_file(file)
 
     def add_folder(self, folder: _SgaFsFolderV2):
-        self._convert_to_memfolder()
+        self._unlazy()
         return self._backing.add_folder(folder)
 
     @property
@@ -610,6 +686,15 @@ class SgaFsFolderV2(_SgaFsFolderV2):
     def get_child(self, part):
         return self._backing.get_child(part)
 
+    def remove_file(self, name: str):
+        return self._backing.remove_file(name)
+
+    def remove_folder(self, name):
+        return self._backing.remove_folder(name)
+
+    def remove_child(self, name):
+        return self._backing.remove_child(name)
+
 
 class _SgaFsDriveV2:
     @property
@@ -622,12 +707,6 @@ class _SgaFsDriveV2:
 
     @property
     def root(self) -> SgaFsFolderV2:
-        raise NotImplementedError
-
-    def getinfo(self, namespaces: Collection[str]) -> Info:
-        raise NotImplementedError
-
-    def setinfo(self, info: Mapping[Mapping[str, object]]):
         raise NotImplementedError
 
 
@@ -657,10 +736,10 @@ class SgaFsDriveV2Lazy(_SgaFsDriveV2):
 
 
 class SgaFsDriveV2Mem(_SgaFsDriveV2):
-    def __init__(self, name: str, alias: str):
+    def __init__(self, name: str, alias: str, root: Optional[SgaFsFolderV2] = None):
         self._name = name
         self._alias = alias
-        self._root = SgaFsFolderV2()
+        self._root = root or SgaFsFolderV2()
 
     @property
     def name(self):
@@ -673,6 +752,52 @@ class SgaFsDriveV2Mem(_SgaFsDriveV2):
     @property
     def root(self) -> SgaFsFolderV2:
         return self._root
+
+
+class SgaFsDriveV2(_SgaFsDriveV2):
+    def __init__(
+        self,
+        lazy: Optional[SgaFsDriveV2Lazy] = None,
+        mem: Optional[SgaFsDriveV2Mem] = None,
+    ):
+        if lazy is not None and mem is not None:
+            raise RelicToolError(
+                "Drive trying to be created as both a lazy and in-memory drive!"
+            )
+        if lazy is None and mem is None:
+            raise RelicToolError(
+                "Drive trying to be created without specifying lazy/in-memory!"
+            )
+
+        self._is_lazy: bool = lazy is not None
+        self._backing: _SgaFsDriveV2 = lazy or mem  # type: ignore # at least one will not be None
+
+    def _unlazy(self):
+        if not self._is_lazy:
+            return
+        self._is_lazy = False
+        root_folder = self._backing.root
+        if hasattr(root_folder, "_unlazy"):
+            root_folder._unlazy()
+        self._backing = SgaFsDriveV2Mem(
+            self._backing.name, self._backing.alias, root_folder
+        )
+
+    def _unlazy_children(self):
+        if hasattr(self.root, "_unlazy_children"):
+            self.root._unlazy_children()
+
+    @property
+    def name(self):
+        return self._backing.name
+
+    @property
+    def alias(self):
+        return self._backing.alias
+
+    @property
+    def root(self):
+        return self._backing.root
 
 
 class SgaFsV2Packer:
@@ -690,33 +815,81 @@ class DriveExistsError(RelicToolError):
 
 
 class SgaFsV2(FS):
-    def __init__(self, handle: Optional[BinaryIO], parse_handle: bool = False):
+    def __init__(
+        self,
+        handle: Optional[BinaryIO] = None,
+        parse_handle: bool = False,
+        game: Optional[SgaV2GameFormat] = None,
+        in_memory: bool = True,
+        *,
+        verify_header=False,
+        verify_file=False,
+    ):
+        """
+        :param handle: The backing IO object to read/write to. If not present, the archive is automatically treated as an empty in-memory archive.
+        :parse_handle: Parses the handle as an SGA file, if false, the archive is treated as an empty in-memory archive.
+        :param in_memory: Loads the archive in-memory if the handle is parsed. This is more performant when performing many reads, or when handling small files. By default this is True.
+        :param game: Specifies the game format. Impossible Creatures and Dawn of War use slightly different versions of the V2 specification, this allows the archive to know which version to use if it's ambitious.
+        :param verify_header: Validates the Header MD5 when parsing the file; raises a MD5 Hash Mismatch error on failure.
+        :param verify_file:Validates the File MD5 when parsing the file; raises a MD5 Hash Mismatch error on failure.
+        """
         super().__init__()
 
         self._stream = handle
         self._file_md5: Optional[bytes] = None
         self._header_md5: Optional[bytes] = None
-        self._drives: Dict[str, _SgaFsDriveV2] = {}
+        self._drives: Dict[str, SgaFsDriveV2] = {}
         self._lazy_file = None
+        self._game: Optional[SgaV2GameFormat] = game
+
         if parse_handle:
             if handle is None:
                 raise RelicToolError("Cannot parse a null handle!")
-            self._lazy_file = SgaFileV2(handle)
+
+            self._lazy_file = SgaFileV2(handle, game_format=game)
+            if verify_header:
+                self._lazy_file.verify_header(error=True)
+            if verify_file:
+                self._lazy_file.verify_file(error=True)
+
             self._load_lazy(self._lazy_file)
+
             self._file_md5 = self._lazy_file.meta.file_md5
             self._header_md5 = self._lazy_file.meta.header_md5
+            self._game = self._lazy_file.table_of_contents.game_format
+
+            if in_memory is True:
+                self._unlazy()
+
+    def _unlazy(self):
+        """
+        Converts the filesystem into an in-memory filesystem. Useful for separating the underlying file from the filesystem instance.
+        """
+        if self._lazy_file is None:
+            return  # already in memory
+
+        for drive in self._drives.values():
+            drive._unlazy()
+            drive._unlazy_children()
+
+        self._lazy_file.close()  # Not neccessary, but doesnt hurt
+        self._lazy_file = None
+
+    def load_into_memory(self):
+        self._unlazy()
 
     def save(self, out: Optional[BinaryIO] = None):
+        """
+        Saves the FileSystem to the handle provided, if saving in place; the archive will b
+        """
+
         if self._stream is None and out is None:
             raise RelicToolError("Failed to save, out/handle not specified!")
-        if out is None and self._lazy_file is not None:
-            # we can't write to a lazily read file
-            # we need to write to a temp-structure, then copy it over
-            # this does make mem-fs only writing longer than neccessary
-            #   But that also requires the archive to edit EVERY file, which probably doesn't happen often? I hope?
-            with BytesIO() as temp:
-                SgaFsV2Packer.serialize(self, temp)
-                temp.seek(0)
+        if out is None:
+            self._unlazy()  # we can't write to a lazily read file, we load the archive into memory; if its in memory this does nothing
+            out = self._stream
+
+        SgaFsV2Packer.serialize(self, out)
 
     def getmeta(self, namespace="standard"):  # type: (Text) -> Mapping[Text, object]
         if namespace == NS_ESSENCE:
@@ -725,15 +898,15 @@ class SgaFsV2(FS):
                 "file_md5": self._file_md5,
                 "header_md5": self._header_md5,
             }
-        else:
-            return super().getmeta(namespace)
 
-    def create_drive(self, name: str, alias: str) -> SgaFsDriveV2Mem:
-        drive = SgaFsDriveV2Mem(name, alias)
+        return super().getmeta(namespace)
+
+    def create_drive(self, name: str, alias: str) -> SgaFsDriveV2:
+        drive = SgaFsDriveV2(mem=SgaFsDriveV2Mem(name, alias))
         self.add_drive(drive)
         return drive
 
-    def add_drive(self, drive: _SgaFsDriveV2):
+    def add_drive(self, drive: SgaFsDriveV2):
         if drive.alias in self._drives:
             raise DriveExistsError(f"Drive Alias '{drive.alias}' already exists!")
         self._drives[drive.alias] = drive
@@ -762,7 +935,10 @@ class SgaFsV2(FS):
                     )
                 )
             )
-        drives = [SgaFsDriveV2Lazy(drive_info, folders) for drive_info in toc.drives]
+        drives = [
+            SgaFsDriveV2(lazy=SgaFsDriveV2Lazy(drive_info, folders))
+            for drive_info in toc.drives
+        ]
         for drive in drives:
             self.add_drive(drive)
 
@@ -774,10 +950,13 @@ class SgaFsV2(FS):
     def _getnode_from_drive(drive: _SgaFsDriveV2, path: str, exists: bool = False):
         current = drive.root
 
-        for part in SgaPathResolver.split_parts(path):
+        # if path == SgaPathResolver.ROOT:
+        #     return current
+
+        for part in SgaPathResolver.split_parts(path, include_root=False):
             if current is None:
                 raise fs.errors.ResourceNotFound(path)
-            elif not current.getinfo("basic").get("basic", "is_dir"):
+            if not current.getinfo("basic").get("basic", "is_dir"):
                 raise fs.errors.DirectoryExpected(path)
             current = current.get_child(part)
 
@@ -794,13 +973,13 @@ class SgaFsV2(FS):
             if alias not in self._drives:
                 raise fs.errors.ResourceNotFound(path)
             return self._getnode_from_drive(self._drives[alias], _path, exists=exists)
-        else:
-            for drive in self.drives:
-                try:
-                    return self._getnode_from_drive(drive, _path, exists=exists)
-                except fs.errors.ResourceNotFound:
-                    continue
-            raise fs.errors.ResourceNotFound(path)
+
+        for drive in self.drives:
+            try:
+                return self._getnode_from_drive(drive, _path, exists=exists)
+            except fs.errors.ResourceNotFound:
+                continue
+        raise fs.errors.ResourceNotFound(path)
 
     def getinfo(self, path, namespaces=None):
         node = self._getnode(path, exists=True)
@@ -880,6 +1059,8 @@ class SgaFsV2(FS):
                 path,
                 "An alias must be specified when multiple 'drives' are present in the filesystem.",
             )
+        for part in SgaPathResolver.split_parts(_path):
+            current = current.makedir(part, permissions, recreate)
 
     def openbin(self, path, mode="r", buffering=-1, **options):
         node: _SgaFsFileV2 = self._getnode(path, exists=True)
@@ -920,3 +1101,13 @@ class SgaFsV2(FS):
     def setinfo(self, path, info):
         node = self._getnode(path, exists=True)
         node.setinfo(info)
+
+    def iterate_fs(self) -> Tuple[str, SubFS[SgaFsV2]]:
+        for alias, _ in self._drives.items():
+            yield alias, self.opendir(SgaPathResolver.build(alias=alias))
+
+    def verify_file_crc(self, path: str, error: bool = False) -> bool:
+        node: SgaFsFileV2 = self._getnode(path, exists=True)
+        if node.getinfo("basic").is_dir:
+            raise fs.errors.FileExists(path)
+        return node.verify_crc32(error)

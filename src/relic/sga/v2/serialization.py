@@ -1,23 +1,17 @@
 """
 Binary Serializers for Relic's SGA-V2
+
 """
 from __future__ import annotations
 
 import os
 import time
 from datetime import datetime, timezone
-from enum import StrEnum
+from enum import Enum
 from typing import BinaryIO, Optional, Union, Literal, Tuple
 
 from relic.core.errors import RelicToolError
-from relic.sga.core._proxyfs import SgaFs, LazySgaFs
 from relic.sga.core.definitions import StorageType
-from relic.sga.core.essencesfs import (
-    EssenceFS,
-    LazyEssenceFS,
-    _ns_supports,
-    _ns_essence,
-)
 from relic.sga.core.hashtools import md5
 from relic.sga.core.lazyio import (
     BinaryWindow,
@@ -25,7 +19,6 @@ from relic.sga.core.lazyio import (
     tell_end,
     ZLibFileReader,
 )
-from relic.sga.core.opener import registry, _FakeSerializer
 from relic.sga.core.serialization import (
     SgaMetaBlock,
     SgaTocHeader,
@@ -37,8 +30,6 @@ from relic.sga.core.serialization import (
     SgaFile,
     SgaTocFile,
 )
-
-from relic.sga.v2.definitions import version as local_version
 
 
 class RelicUnixTimeSerializer:
@@ -140,8 +131,8 @@ class SgaTocHeaderV2(SgaTocHeader):
 
 
 class SgaTocDriveV2(SgaTocDrive):
-    _PATH = (0, 64)
-    _NAME = (_next(*_PATH), 64)
+    _ALIAS = (0, 64)
+    _NAME = (_next(*_ALIAS), 64)
     _FIRST_FOLDER = (_next(*_NAME), 2)
     _LAST_FOLDER = (_next(*_FIRST_FOLDER), 2)
     _FIRST_FILE = (_next(*_LAST_FOLDER), 2)
@@ -160,14 +151,14 @@ class SgaTocFolderV2(SgaTocFolder):
 
 
 class _SgaTocFileV2(SgaTocFile, LazyBinary):
-    _NAME_OFFSET = None
-    _FLAGS = None
-    _DATA_OFFSET = None
-    _COMP_SIZE = None
-    _DECOMP_SIZE = None
-    _SIZE = None
-    _STORAGE_TYPE_MASK = 0xF0  # 00, 10, 20
-    _STORAGE_TYPE_SHIFT = 4
+    _NAME_OFFSET: Tuple[int, int] = None
+    _FLAGS: Tuple[int, int] = None
+    _DATA_OFFSET: Tuple[int, int] = None
+    _COMP_SIZE: Tuple[int, int] = None
+    _DECOMP_SIZE: Tuple[int, int] = None
+    _SIZE: int = None
+    _STORAGE_TYPE_MASK: int = 0xF0  # 00, 10, 20
+    _STORAGE_TYPE_SHIFT: int = 4
 
     def __init__(self, parent: BinaryIO):
         super().__init__(parent)
@@ -280,14 +271,14 @@ class SgaTocFileDataHeaderV2Dow(BinaryWindow, LazyBinary):
 
     @property
     def crc32(self) -> int:
-        buffer = self._read_bytes(*self._MODIFIED_OFFSET)
+        buffer = self._read_bytes(*self._CRC_OFFSET)
         return self._unpack_int(buffer)
 
     @crc32.setter
     def crc32(self, value: int):
         size = self._CRC_OFFSET[1]
         buffer = self.__pack_int(value, size)
-        _ = self._write_bytes(buffer, *self._MODIFIED_OFFSET)
+        _ = self._write_bytes(buffer, *self._CRC_OFFSET)
 
 
 class SgaTocFileDataV2Dow:
@@ -301,13 +292,17 @@ class SgaTocFileDataV2Dow:
         self._name_window = name_window
         self._data_window = data_window
 
+        size = SgaTocFileDataHeaderV2Dow._SIZE
+        offset = self._toc_file.data_offset - size
+        self._data_header = SgaTocFileDataHeaderV2Dow(self._data_window, offset, size)
+
+    @property
     def name(self):
         return self._name_window.get_name(self._toc_file.name_offset)
 
+    @property
     def header(self) -> SgaTocFileDataHeaderV2Dow:
-        size = SgaTocFileDataHeaderV2Dow._SIZE
-        offset = self._toc_file.data_offset - size
-        return SgaTocFileDataHeaderV2Dow(self._data_window, offset, size)
+        return self._data_header
 
     def data(self, decompress: bool = True) -> BinaryIO:
         offset = self._toc_file.data_offset
@@ -315,8 +310,7 @@ class SgaTocFileDataV2Dow:
         window = BinaryWindow(self._data_window, offset, size)
         if decompress and self._toc_file.storage_type != StorageType.STORE:
             return ZLibFileReader(window)
-        else:
-            return window
+        return window
 
 
 class SgaTocFileV2ImpCreatures(_SgaTocFileV2):
@@ -328,8 +322,8 @@ class SgaTocFileV2ImpCreatures(_SgaTocFileV2):
     _SIZE = _next(*_DECOMP_SIZE)
 
 
-class SgaV2GameFormat(StrEnum):
-    DawnOfWar = ("Dawn Of War",)
+class SgaV2GameFormat(Enum):
+    DawnOfWar = "Dawn Of War"
     ImpossibleCreatures = "Impossible Creatures"
 
 
@@ -366,6 +360,12 @@ class SgaTocV2(SgaToc):
         # DoW is 20 and IC is 17
         # We can determine which via comparing the size of the full block
         file_block_start, file_count = header.file_info
+
+        if file_count == 0:
+            raise RelicToolError(
+                f"Game format could not be determined; no files in file block."
+            )
+
         file_block_end = cls._determine_next_header_block_ptr(header, file_block_start)
         file_block_size = file_block_end - file_block_start
         file_def_size = file_block_size / file_count
@@ -427,7 +427,7 @@ class SgaTocV2(SgaToc):
 class SgaFileV2(SgaFile):
     _META_BLOCK = (SgaFile._MAGIC_VERSION_SIZE, SgaMetaBlockV2._SIZE)
 
-    def __init__(self, parent: BinaryIO):
+    def __init__(self, parent: BinaryIO, game_format: Optional[SgaV2GameFormat] = None):
         super().__init__(parent)
         self._meta = SgaMetaBlockV2(BinaryWindow(parent, *self._META_BLOCK))
         self._header_window = BinaryWindow(
@@ -437,7 +437,7 @@ class SgaFileV2(SgaFile):
         _data_end = tell_end(parent)  # Terminal not specified in V2
         _data_size = _data_end - _data_start
         self._data_window = BinaryWindow(parent, _data_start, _data_size)
-        self._toc = SgaTocV2(self._header_window)
+        self._toc = SgaTocV2(self._header_window, game=game_format)
 
     def __verify(
         self, cached: bool, error: bool, hasher: md5, expected: bytes, cache_name: str
@@ -483,7 +483,7 @@ class SgaFileV2(SgaFile):
             cached=cached,
             error=error,
             hasher=hasher,
-            expected=self._meta.file_md5,
+            expected=self._meta.header_md5,
             cache_name=NAME,
         )
 
@@ -498,26 +498,3 @@ class SgaFileV2(SgaFile):
     @property
     def data_block(self) -> BinaryWindow:
         return self._data_window
-
-
-class EssenceFSSerializer(_FakeSerializer):
-    """
-    Serializer to read/write an SGA file to/from a stream from/to a SGA File System
-    """
-
-    version = local_version
-    autoclose = False
-
-    def read(self, stream: BinaryIO) -> EssenceFS:
-        return EssenceFSV2(stream)
-
-    def write(self, stream: BinaryIO, essence_fs: EssenceFS) -> int:
-        raise NotImplementedError
-
-
-essence_fs_serializer = EssenceFSSerializer()
-registry.auto_register(essence_fs_serializer)
-
-__all__ = [
-    "essence_fs_serializer",
-]

@@ -9,9 +9,10 @@ import fs
 from relic.core.cli import CliPlugin, _SubParsersAction
 from relic.sga.core.cli import _get_dir_type_validator, _get_file_type_validator
 from relic.sga.core.definitions import StorageType
-from relic.sga.core.filesystem import EssenceFS
 
+from relic.sga.v2 import version
 from relic.sga.v2.serialization import essence_fs_serializer as v2_serializer
+from relic.sga.v2.sgafs import SgaFsV2
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
@@ -195,7 +196,7 @@ class RelicSgaRepackV2Cli(CliPlugin):
         # Create 'SGA'
         print(f"\tReading `{in_sga}`")
         with fs.open_fs(f"sga://{in_sga}") as sga:
-            sga = typing.cast(EssenceFS, sga)  # mypy hack
+            sga = typing.cast(SgaFsV2, sga)  # mypy hack
             # Write to binary file:
             print(f"\tWriting `{out_sga}`")
             with open(out_sga, "wb") as sga_file:
