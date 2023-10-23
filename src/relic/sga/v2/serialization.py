@@ -3,20 +3,28 @@ Binary Serializers for Relic's SGA-V2
 """
 from __future__ import annotations
 
-import hashlib
-from io import BytesIO
-from typing import BinaryIO, Optional, Tuple, Union
+import os
+import time
+from datetime import datetime, timezone
+from enum import StrEnum
+from typing import BinaryIO, Optional, Union, Literal, Tuple
 
-from relic.sga.v2.definitions import version as local_version
+from relic.core.errors import RelicToolError
 from relic.sga.core._proxyfs import SgaFs, LazySgaFs
-from relic.sga.core.definitions import Version, StorageType
+from relic.sga.core.definitions import StorageType
 from relic.sga.core.essencesfs import (
     EssenceFS,
     LazyEssenceFS,
     _ns_supports,
     _ns_essence,
 )
-from relic.sga.core.lazyio import BinaryWindow, LazyBinary, tell_end, read_chunks
+from relic.sga.core.hashtools import md5
+from relic.sga.core.lazyio import (
+    BinaryWindow,
+    LazyBinary,
+    tell_end,
+    ZLibFileReader,
+)
 from relic.sga.core.opener import registry, _FakeSerializer
 from relic.sga.core.serialization import (
     SgaMetaBlock,
@@ -29,6 +37,39 @@ from relic.sga.core.serialization import (
     SgaFile,
     SgaTocFile,
 )
+
+from relic.sga.v2.definitions import version as local_version
+
+
+class RelicUnixTimeSerializer:
+    LE: Literal["little"] = "little"
+
+    @classmethod
+    def pack(cls, value: Union[float, int]) -> bytes:
+        int_value = int(value)
+        return int_value.to_bytes(4, cls.LE, signed=True)
+
+    @classmethod
+    def unpack(cls, buffer: bytes) -> int:
+        return int.from_bytes(buffer, cls.LE, signed=False)
+
+
+class RelicDateTimeSerializer:
+    LE: Literal["little"] = "little"
+
+    @classmethod
+    def pack(cls, value: datetime) -> bytes:
+        value = time.mktime(value.timetuple())
+        return RelicUnixTimeSerializer.pack(value)
+
+    @classmethod
+    def unpack(cls, buffer: bytes) -> datetime:
+        value = RelicUnixTimeSerializer.unpack(buffer)
+        return cls.unix2datetime(value)
+
+    @classmethod
+    def unix2datetime(cls, value):
+        return datetime.fromtimestamp(value, timezone.utc)
 
 
 def _next(offset, size):
@@ -46,6 +87,7 @@ class SgaMetaBlockV2(SgaMetaBlock):
     _HEADER_SIZE = (_next(*_HEADER_MD5), 4)
     _DATA_POS = (_next(*_HEADER_SIZE), 4)
     _SIZE = _next(*_DATA_POS)
+    _HEADER_POS = 180
 
     @property
     def file_md5(self) -> bytes:  # TODO
@@ -64,7 +106,9 @@ class SgaMetaBlockV2(SgaMetaBlock):
 
     @property
     def header_pos(self) -> int:
-        result = self._SIZE + SgaFileV2._MAGIC_VERSION_SIZE  # 184 | 0xB8
+        result = (
+            self._HEADER_POS
+        )  # self._SIZE + SgaFileV2._MAGIC_VERSION_SIZE  # 184 | 0xB8
         return result
         # pass
 
@@ -133,37 +177,146 @@ class _SgaTocFileV2(SgaTocFile, LazyBinary):
         buffer = self._read_bytes(*self._NAME_OFFSET)
         return self._unpack_int(buffer)
 
+    @name_offset.setter
+    def name_offset(self, value: int):
+        buffer = self.__pack_int(value, self._NAME_OFFSET[1])
+        _ = self._write_bytes(buffer, *self._NAME_OFFSET)
+
     @property
     def data_offset(self):  # data_rel_pos
         buffer = self._read_bytes(*self._DATA_OFFSET)
         return self._unpack_int(buffer)
+
+    @data_offset.setter
+    def data_offset(self, value: int):
+        buffer = self.__pack_int(value, self._DATA_OFFSET[1])
+        _ = self._write_bytes(buffer, *self._DATA_OFFSET)
 
     @property
     def compressed_size(self):  # length_in_archive
         buffer = self._read_bytes(*self._COMP_SIZE)
         return self._unpack_int(buffer)
 
+    @compressed_size.setter
+    def compressed_size(self, value: int):
+        buffer = self.__pack_int(value, self._COMP_SIZE[1])
+        _ = self._write_bytes(buffer, *self._COMP_SIZE)
+
     @property
     def decompressed_size(self):  # length_on_disk
         buffer = self._read_bytes(*self._DECOMP_SIZE)
         return self._unpack_int(buffer)
 
+    @decompressed_size.setter
+    def decompressed_size(self, value: int):
+        buffer = self.__pack_int(value, self._DECOMP_SIZE[1])
+        _ = self._write_bytes(buffer, *self._DECOMP_SIZE)
+
     @property
-    def storage_type(self):
+    def storage_type(self) -> StorageType:
+        """
+        The Storage Type that the
+        """
         buffer = self._read_bytes(*self._FLAGS)
-        value = (
-            self._unpack_int(buffer) & self._STORAGE_TYPE_MASK
-        ) >> self._STORAGE_TYPE_SHIFT
-        return StorageType(value)  # V2 uses
+        value = self._unpack_int(buffer)
+        value &= self._STORAGE_TYPE_MASK
+        value >>= self._STORAGE_TYPE_SHIFT
+        return StorageType(value)
+
+    @storage_type.setter
+    def storage_type(self, value: StorageType):
+        # assuming this IS IN FACT, a flag value, we need to read it to edit it
+        rbuffer = self._read_bytes(*self._FLAGS)
+        flag = value << self._STORAGE_TYPE_SHIFT
+        value = self._unpack_int(rbuffer)  # convert to int-packed flags
+        value &= ~self._STORAGE_TYPE_MASK  # clear storage flag
+        value |= flag  # apply storage flag
+        wbuffer = self.__pack_int(value, self._FLAGS[1])
+        _ = self._write_bytes(wbuffer, *self._FLAGS)
 
 
-class SgaTocFileV2DoW(_SgaTocFileV2):
+class SgaTocFileV2Dow(_SgaTocFileV2):
     _NAME_OFFSET = (0, 4)
     _FLAGS = (_next(*_NAME_OFFSET), 4)
     _DATA_OFFSET = (_next(*_FLAGS), 4)
     _COMP_SIZE = (_next(*_DATA_OFFSET), 4)
     _DECOMP_SIZE = (_next(*_COMP_SIZE), 4)
     _SIZE = _next(*_DECOMP_SIZE)
+
+
+class SgaTocFileDataHeaderV2Dow(BinaryWindow, LazyBinary):
+    _NAME_OFFSET = (0, 256)
+    _NAME_ENC = "ascii"
+    _NAME_PADDING = "\0"
+    _MODIFIED_OFFSET = (_next(*_NAME_OFFSET), 4)
+    _CRC_OFFSET = (_next(*_MODIFIED_OFFSET), 4)
+    _SIZE = _next(*_CRC_OFFSET)
+
+    @property
+    def name(self) -> str:
+        buffer = self._read_bytes(*self._NAME_OFFSET)
+        value = self._unpack_str(buffer, self._NAME_ENC, strip=self._NAME_PADDING)
+        return value
+
+    @name.setter
+    def name(self, value: str):
+        size = self._NAME_OFFSET[1]
+        buffer = self._pack_str(value, self._NAME_ENC, size, padding=self._NAME_PADDING)
+        _ = self._write_bytes(buffer, *self._NAME_OFFSET)
+
+    @property
+    def modified(self) -> int:
+        """
+        The time (from the unix epoch) when this file was modified.
+        Measured to the second, fractions of a second are truncated.
+        """
+        buffer = self._read_bytes(*self._MODIFIED_OFFSET)
+        return RelicUnixTimeSerializer.unpack(buffer)
+
+    @modified.setter
+    def modified(self, value: Union[float, int]):
+        buffer = RelicUnixTimeSerializer.pack(value)
+        _ = self._write_bytes(buffer, *self._MODIFIED_OFFSET)
+
+    @property
+    def crc32(self) -> int:
+        buffer = self._read_bytes(*self._MODIFIED_OFFSET)
+        return self._unpack_int(buffer)
+
+    @crc32.setter
+    def crc32(self, value: int):
+        size = self._CRC_OFFSET[1]
+        buffer = self.__pack_int(value, size)
+        _ = self._write_bytes(buffer, *self._MODIFIED_OFFSET)
+
+
+class SgaTocFileDataV2Dow:
+    def __init__(
+        self,
+        toc_file: SgaTocFile,
+        name_window: SgaNameWindow,
+        data_window: BinaryWindow,
+    ):
+        self._toc_file = toc_file
+        self._name_window = name_window
+        self._data_window = data_window
+
+    def name(self):
+        return self._name_window.get_name(self._toc_file.name_offset)
+
+    def header(self) -> SgaTocFileDataHeaderV2Dow:
+        size = SgaTocFileDataHeaderV2Dow._SIZE
+        offset = self._toc_file.data_offset - size
+        return SgaTocFileDataHeaderV2Dow(self._data_window, offset, size)
+
+    def data(self, decompress: bool = True) -> BinaryIO:
+        offset = self._toc_file.data_offset
+        size = self._toc_file.compressed_size
+        window = BinaryWindow(self._data_window, offset, size)
+        if decompress and self._toc_file.storage_type != StorageType.STORE:
+            return ZLibFileReader(window)
+        else:
+            return window
 
 
 class SgaTocFileV2ImpCreatures(_SgaTocFileV2):
@@ -175,8 +328,60 @@ class SgaTocFileV2ImpCreatures(_SgaTocFileV2):
     _SIZE = _next(*_DECOMP_SIZE)
 
 
+class SgaV2GameFormat(StrEnum):
+    DawnOfWar = ("Dawn Of War",)
+    ImpossibleCreatures = "Impossible Creatures"
+
+
+GAME_FORMAT_TOC_FILE = {
+    SgaV2GameFormat.DawnOfWar: SgaTocFileV2Dow,
+    SgaV2GameFormat.ImpossibleCreatures: SgaTocFileV2ImpCreatures,
+}
+GAME_FORMAT_TOC_FILE_DATA = {
+    SgaV2GameFormat.DawnOfWar: SgaTocFileDataV2Dow,
+    SgaV2GameFormat.ImpossibleCreatures: None,
+}
+
+
 class SgaTocV2(SgaToc):
-    def __init__(self, parent: BinaryIO):
+    @classmethod
+    def _determine_next_header_block_ptr(
+        cls, header: SgaTocHeaderV2, index: int = -1
+    ) -> int:
+        smallest = header.seek(0, os.SEEK_END)
+        ptrs = [
+            header.folder_info[0],
+            header.drive_info[0],
+            header.file_info[0],
+            header.name_info[0],
+        ]
+        for ptr in ptrs:
+            if index < ptr < smallest:
+                smallest = ptr
+        return smallest
+
+    @classmethod
+    def _determine_game(cls, header: SgaTocHeaderV2):
+        # Unfortunately DoW and IC (Steam) have a slightly different file layout
+        # DoW is 20 and IC is 17
+        # We can determine which via comparing the size of the full block
+        file_block_start, file_count = header.file_info
+        file_block_end = cls._determine_next_header_block_ptr(header, file_block_start)
+        file_block_size = file_block_end - file_block_start
+        file_def_size = file_block_size / file_count
+
+        for game_format, format_class in GAME_FORMAT_TOC_FILE.items():
+            if format_class._SIZE == file_def_size:
+                return game_format
+        EXPECTED = [
+            f"'{format_class._SIZE}' ({game_format.value})"
+            for (game_format, format_class) in GAME_FORMAT_TOC_FILE.items()
+        ]  #
+        raise RelicToolError(
+            f"Game format could not be determined; expected '{EXPECTED}', received `{file_def_size}."
+        )
+
+    def __init__(self, parent: BinaryIO, game: Optional[SgaV2GameFormat] = None):
         super().__init__(parent)
         self._header = SgaTocHeaderV2(parent)
         self._drives = SgaTocInfoArea(
@@ -185,30 +390,13 @@ class SgaTocV2(SgaToc):
         self._folders = SgaTocInfoArea(
             parent, *self._header.folder_info, cls=SgaTocFolderV2
         )
+        if game is None:
+            game = self._determine_game(self._header)
+        self._game_format = game
 
-        # Unfortunately DoW and IC (Steam) have a slightly different file layout
-        # DoW is 20 and IC is 17
-        # We can determine which via comparing the size of the full block
-        if self._header.file_info[1] == 0:
-            # Just pick one, shouldn't matter; no files present
-            self._files = SgaTocInfoArea(
-                parent, *self._header.file_info, cls=SgaTocFileV2DoW
-            )
-        else:
-            # TODO properly determine the start of the next block (which may actual be the end of the header)
-            # We currently assume that it is the name block, because it always 'should' be next
-            file_block_size = self._header.name_info[0] - self._header.file_info[0]
-            toc_file_size = file_block_size / self._header.file_info[1]
-            variants = [SgaTocFileV2DoW, SgaTocFileV2ImpCreatures]
-            self._files = None
-            for variant in variants:
-                if variant._SIZE == toc_file_size:
-                    self._files = SgaTocInfoArea(
-                        parent, *self._header.file_info, cls=variant
-                    )
-                    break
-            if self._files is None:
-                raise NotImplementedError(toc_file_size)
+        self._files = SgaTocInfoArea(
+            parent, *self._header.file_info, cls=GAME_FORMAT_TOC_FILE[self._game_format]
+        )
         self._names = SgaNameWindow(parent, *self._header.name_info)
 
     @property
@@ -228,25 +416,12 @@ class SgaTocV2(SgaToc):
         return self._files
 
     @property
-    def names(self) -> BinaryWindow:
+    def names(self) -> SgaNameWindow:
         return self._names
 
-
-def _md5_checksum(
-    stream: BinaryIO,
-    start: int,
-    size: Optional[int] = None,
-    eigen: Optional[bytes] = None,
-    expected: Optional[bytes] = None,
-) -> Tuple[bytes, Optional[bool]]:
-    hasher = hashlib.md5(eigen)
-    for chunk in read_chunks(stream, start, size):
-        hasher.update(chunk)
-    hash = hasher.digest()
-    match = None
-    if expected is not None:
-        match = hash == expected
-    return hash, match
+    @property
+    def game_format(self) -> SgaV2GameFormat:
+        return self._game_format
 
 
 class SgaFileV2(SgaFile):
@@ -264,71 +439,66 @@ class SgaFileV2(SgaFile):
         self._data_window = BinaryWindow(parent, _data_start, _data_size)
         self._toc = SgaTocV2(self._header_window)
 
-    def verify(self):
-        return self.verify_header() and self.verify_file()
+    def __verify(
+        self, cached: bool, error: bool, hasher: md5, expected: bytes, cache_name: str
+    ):
+        if (
+            "r" not in self._parent.mode
+            or error  # we can't use the cache if we want to error
+            or not cached
+            or not hasattr(self, cache_name)
+        ):
+            args: Tuple[BinaryIO, bytes] = self._parent, expected
+            if not error:
+                result = hasher.check(*args)
+            else:
+                hasher.validate(*args)
+                result = True
+            setattr(self, cache_name, result)
 
-    def verify_file(self, cached: bool = True):
-        if not cached or not hasattr(self, "__verified_file"):
-            _hash, self.__verified_file = _md5_checksum(
-                self._parent,
-                self._meta.header_pos,
-                eigen=_FILE_MD5_EIGEN,
-                expected=self._meta.file_md5,
-            )
-        return self.__verified_file
+        return getattr(self, cache_name)
 
-    def verify_header(self, cached: bool = True):
-        if not cached or not hasattr(self, "__verified_header"):
-            _hash, self.__verified_header = _md5_checksum(
-                self._parent,
-                self._meta.header_pos,
-                self._meta.header_size,
-                eigen=_HEADER_MD5_EIGEN,
-                expected=self._meta.header_md5,
-            )
-        return self.__verified_header
+    def verify_file(self, cached: bool = True, error: bool = False) -> bool:
+        NAME = "__verified_file"
+        hasher = md5(
+            self._meta.header_pos,
+            eigen=_FILE_MD5_EIGEN,
+        )
+        return self.__verify(
+            cached=cached,
+            error=error,
+            hasher=hasher,
+            expected=self._meta.file_md5,
+            cache_name=NAME,
+        )
+
+    def verify_header(self, cached: bool = True, error: bool = False) -> bool:
+        NAME = "__verified_file"
+        hasher = md5(
+            self._meta.header_pos,
+            self._meta.header_size,
+            eigen=_HEADER_MD5_EIGEN,
+        )
+        return self.__verify(
+            cached=cached,
+            error=error,
+            hasher=hasher,
+            expected=self._meta.file_md5,
+            cache_name=NAME,
+        )
 
     @property
-    def meta(self) -> SgaMetaBlock:
+    def meta(self) -> SgaMetaBlockV2:
         return self._meta
 
     @property
-    def table_of_contents(self) -> SgaToc:
+    def table_of_contents(self) -> SgaTocV2:
         return self._toc
 
     @property
     def data_block(self) -> BinaryWindow:
         return self._data_window
 
-
-class EssenceFSV2(LazyEssenceFS):
-    _essence = _ns_essence(version=local_version)
-    _supports = _ns_supports(archive_verification=True)
-
-    def __init__(self, data: Union[SgaFile, SgaFs, BinaryIO]):
-        stream = sga = fakefs = None
-        if isinstance(data, SgaFs):
-            fakefs = data
-        elif isinstance(data, SgaFile):
-            sga = data
-        elif isinstance(
-            data, BinaryIO
-        ):  # MUST COME LAST ~ SgaFile implements BinaryWrapper
-            stream = data
-        else:
-            raise NotImplementedError(data)
-
-        if stream is not None:
-            sga = SgaFileV2(stream)
-        if sga is not None:
-            fakefs = LazySgaFs(sga)
-        if fakefs is None:
-            raise NotImplementedError(fakefs, sga, stream, data)
-
-        super().__init__(fakefs._stream, fakefs)
-
-    def getmeta(self, namespace: str = "standard"):
-        return super().getmeta(namespace)
 
 class EssenceFSSerializer(_FakeSerializer):
     """
