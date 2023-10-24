@@ -201,11 +201,15 @@ class RelicSgaRepackV2Cli(CliPlugin):
         else:
             game_format = None
 
+        if out_sga is not None:
+            Path(out_sga).parent.mkdir(parents=True, exist_ok=True)
+
         with open(in_sga, "rb") as sga_h:
             sgafs = SgaFsV2(sga_h, parse_handle=True, in_memory=True, game=game_format)
             # Write to binary file:
             if out_sga is not None:
                 print(f"\tWriting `{out_sga}`")
+
                 with open(out_sga, "wb") as sga_file:
                     sgafs.save(sga_file)
             else:
