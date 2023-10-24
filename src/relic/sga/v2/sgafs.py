@@ -1148,7 +1148,7 @@ class _SgaFsV2TocDisassembler:
 
         return window_start
 
-    def write_fs_folder_tree(self, folder: _SgaFsFolderV2, path: str = None):
+    def write_fs_tree_names(self, folder: _SgaFsFolderV2, path: str = None):
         # Writes file names in manner mostly consistent with default SGA archives (file names I believe are written in the order that the .arciv file specifies, because we intermediate with pyfilesystem, we can't 1-1 this)
         #   Additionally; this now doesn't write file names, because file names are ALWAYS at the end of the block
 
@@ -1166,7 +1166,7 @@ class _SgaFsV2TocDisassembler:
             self.write_name(full_fold_path)
 
         for folder in folders:
-            self.write_fs_folder_tree(folder, parent_full_path)
+            self.write_fs_tree_names(folder, parent_full_path)
 
         for file_path in files:
             self.write_name(file_path)
@@ -1182,7 +1182,7 @@ class _SgaFsV2TocDisassembler:
             results.append(pair)
         return results
 
-    def write_fs_file(self, file: _SgaFsFileV2) -> None:
+    def write_fs_file(self, file: _SgaFsFileV2, write_back: Optional[int] = None) -> None:
         # index = self.file_count
 
         name = file.name
@@ -1198,7 +1198,7 @@ class _SgaFsV2TocDisassembler:
             name, modified, uncompressed_buffer, storage_type
         )
 
-        self.write_file(name_offset, storage_type, data_offset, comp_size, decomp_size)
+        self.write_file(name_offset, storage_type, data_offset, comp_size, decomp_size, window_start=write_back)
 
         # return index
 
@@ -1244,7 +1244,7 @@ class _SgaFsV2TocDisassembler:
         name = drive.name
         alias = drive.alias
 
-        self.write_fs_folder_tree(drive.root)
+        self.write_fs_tree_names(drive.root)  # Writes file names
 
         folder_root = folder_start = self.folder_count
         file_start = self.file_count
