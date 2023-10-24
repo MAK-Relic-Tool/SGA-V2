@@ -149,6 +149,7 @@ class RelicSgaPackV2Cli(CliPlugin):
                         )
 
         print(f"Writing `{outfile}` to disk")
+        Path(outfile).parent.mkdir(parents=True, exist_ok=True)
         # Write to binary file:
         with open(outfile, "wb") as sga_file:
             SgaFsV2Packer.serialize(sga, sga_file)
