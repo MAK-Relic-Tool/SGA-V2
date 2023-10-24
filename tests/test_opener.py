@@ -1,7 +1,8 @@
 import json
 import zlib
+from io import BytesIO, StringIO
 from pathlib import Path
-from typing import List, Iterable, Any, Dict
+from typing import List, Iterable, Any, Dict, TextIO
 
 import fs
 import pytest
@@ -62,13 +63,13 @@ class TestEssenceFSOpener:
 
 
 # Hack to get "SampleSGA-v2" from the sample data
-_sample_path_on_disk = [f for f in v2_test_files if "SampleSGA-v2.sga" in f][0]
+_sample_path_on_disk = [f for f in v2_test_files if "SampleSGA-v2-Oct-15-2023.sga" in f][0]
 _sample_drives = ["test"]
 _UNK = b"UNK\0"
 _sample_data = b"Ready to unleash 11 barrels of lead.\nWhere's that artillery?!?!\nOrks are da biggust and da strongest.\nFix bayonets!\nFear me, but follow!\nCall for an earth-shaker?\nMy mind is too weary to fight on...\nWe'll be off as soon as the fuel arrives.\nWhere are those tech priests.\nFire until they see the glow of our barrels!"
 _CRC32 = zlib.crc32(_sample_data).to_bytes(4, "little", signed=False)
 _store_txt = {
-    "path": "test:/String Samples/STORE.txt",
+    "path": "test:/Samples/String Samples/STORE.txt",
     "namespaces": ["basic", "essence"],
     "info": {
         "basic": {"is_dir": False, "name": "STORE.txt"},
@@ -82,7 +83,7 @@ _store_txt = {
     "data": _sample_data,
 }
 _buffer_txt = {
-    "path": "test:/String Samples/BUFFER.txt",
+    "path": "test:/Samples/String Samples/BUFFER.txt",
     "namespaces": ["basic", "essence"],
     "info": {
         "basic": {"is_dir": False, "name": "BUFFER.txt"},
@@ -96,7 +97,7 @@ _buffer_txt = {
     "data": _sample_data,
 }
 _stream_txt = {
-    "path": "test:/String Samples/STREAM.txt",
+    "path": "test:/Samples/String Samples/STREAM.txt",
     "namespaces": ["basic", "essence"],
     "info": {
         "basic": {"is_dir": False, "name": "STREAM.txt"},
@@ -112,10 +113,10 @@ _stream_txt = {
 
 # Non-Exhaustive
 _sample_paths = [
-    "test:/String Samples",
-    "test:/String Samples/STORE.txt",
-    "test:/String Samples/BUFFER.txt",
-    "test:/String Samples/STREAM.txt",
+    "test:/Samples/String Samples",
+    "test:/Samples/String Samples/STORE.txt",
+    "test:/Samples/String Samples/BUFFER.txt",
+    "test:/Samples/String Samples/STREAM.txt",
 ]
 _sample_file_descriptions = [_store_txt]
 _sample_meta = [
@@ -168,6 +169,13 @@ class TestSampleSGAv2:
     def test_path_exists(self, sga_path: str, file_path: str):
         with self._open_fs(sga_path) as sga:
             if not sga.exists(file_path):
+                with StringIO() as h:
+                    sga.tree(file=h)
+                    output = h.getvalue()
+                    print("Tree:")
+                    print(output)
+                    print("=== === ===")
+
                 raise FileNotFoundError(file_path)
 
     def test_file_data(self, sga_path: str, file_descriptor: Dict[str, Any]):

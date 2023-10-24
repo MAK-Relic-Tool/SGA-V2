@@ -10,9 +10,8 @@ from relic.core.cli import CliPlugin, _SubParsersAction
 from relic.sga.core.cli import _get_dir_type_validator, _get_file_type_validator
 from relic.sga.core.definitions import StorageType
 
-from relic.sga.v2 import version
-from relic.sga.v2.serialization import essence_fs_serializer as v2_serializer
-from relic.sga.v2.sgafs import SgaFsV2
+from relic.sga.v2.serialization import SgaV2GameFormat
+from relic.sga.v2.sgafs import SgaFsV2, SgaFsV2Packer
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
@@ -35,7 +34,7 @@ def _resolve_storage_type(s: Optional[str]) -> StorageType:
 
 class RelicSgaPackV2Cli(CliPlugin):
     def _create_parser(
-        self, command_group: Optional[_SubParsersAction] = None
+            self, command_group: Optional[_SubParsersAction] = None
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
@@ -73,15 +72,15 @@ class RelicSgaPackV2Cli(CliPlugin):
         print(f"Packing `{outfile}`")
 
         # Create 'SGA'
-        sga = EssenceFS()
+        sga = SgaFsV2()
         archive_name = os.path.basename(outfile)
         sga.setmeta(
             {
                 "name": archive_name,  # Specify name of archive
                 "header_md5": "0"
-                * 16,  # Must be present due to a bug, recalculated when packed
+                              * 16,  # Must be present due to a bug, recalculated when packed
                 "file_md5": "0"
-                * 16,  # Must be present due to a bug, recalculated when packed
+                            * 16,  # Must be present due to a bug, recalculated when packed
             },
             "essence",
         )
@@ -132,7 +131,7 @@ class RelicSgaPackV2Cli(CliPlugin):
                     )
                     frontier.add(full_path)
                     if (
-                        sga_drive is None
+                            sga_drive is None
                     ):  # Lazily create drive, to avoid empty drives from being created
                         sga_drive = sga.create_drive(alias, name)
 
@@ -152,7 +151,7 @@ class RelicSgaPackV2Cli(CliPlugin):
         print(f"Writing `{outfile}` to disk")
         # Write to binary file:
         with open(outfile, "wb") as sga_file:
-            v2_serializer.write(sga_file, sga)
+            SgaFsV2Packer.serialize(sga, sga_file)
         print(f"\tDone!")
 
         return None
@@ -160,7 +159,7 @@ class RelicSgaPackV2Cli(CliPlugin):
 
 class RelicSgaRepackV2Cli(CliPlugin):
     def _create_parser(
-        self, command_group: Optional[_SubParsersAction] = None
+            self, command_group: Optional[_SubParsersAction] = None
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
@@ -189,18 +188,28 @@ class RelicSgaRepackV2Cli(CliPlugin):
         # Execute Command
 
         if out_sga is None:
-            out_sga = in_sga
             print(f"Re-Packing `{in_sga}`")
         else:
             print(f"Re-Packing `{in_sga}` as `{out_sga}`")
+
         # Create 'SGA'
         print(f"\tReading `{in_sga}`")
-        with fs.open_fs(f"sga://{in_sga}") as sga:
-            sga = typing.cast(SgaFsV2, sga)  # mypy hack
+        if "Dawn of War" in in_sga:
+            game_format = SgaV2GameFormat.DawnOfWar
+        elif "Impossible Creatures" in in_sga:
+            game_format = SgaV2GameFormat.ImpossibleCreatures
+        else:
+            game_format = None
+
+        with open(in_sga, "rb") as sga_h:
+            sgafs = SgaFsV2(sga_h, parse_handle=True, in_memory=True, game=game_format)
             # Write to binary file:
-            print(f"\tWriting `{out_sga}`")
-            with open(out_sga, "wb") as sga_file:
-                v2_serializer.write(sga_file, sga)
+            if out_sga is not None:
+                print(f"\tWriting `{out_sga}`")
+                with open(out_sga, "wb") as sga_file:
+                    sgafs.save(sga_file)
+            else:
+                sgafs.save()
             print(f"\tDone!")
 
         return None
