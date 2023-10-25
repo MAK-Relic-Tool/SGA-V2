@@ -1559,6 +1559,51 @@ class _SgaFsV2Serializer:
         return block_ptrs, toc_size
 
 
+class PackingStorageType:
+    AUTO = -1  # TODO, implement this in storage_type; then have packers determine the storage type
+    STORE = StorageType.STORE
+    STREAM = StorageType.STREAM_COMPRESS
+    BUFFER = StorageType.BUFFER_COMPRESS
+
+
+class PackingStorageTypeResolver:
+    _EXT_TABLE = {
+        "fda": StorageType.STREAM_COMPRESS,
+        "rat": StorageType.STREAM_COMPRESS,
+    }
+
+    def resolve(self, extension: str, size: int) -> StorageType:
+        raise NotImplementedError
+
+
+class PackingManifest:
+    class ArchiveHeader:
+        name: str
+
+    class TocItem:
+        ...
+
+    header: ArchiveHeader
+    toc_list: List[TocItem]
+    ...
+
+
+class PackingScanner:
+    class ArchiveHeader:
+        name: str
+
+    class TocItem:
+        ...
+
+    header: ArchiveHeader
+    toc_list: List[TocItem]
+    ...
+
+
+class PackingSettings:
+    ...
+
+
 class SgaFsV2Packer:
     @classmethod
     def assemble(cls, filesystem: fs.base.FS, manifest: PackingManifest, settings: Optional[PackingSettings] = None) -> SgaFsV2:
