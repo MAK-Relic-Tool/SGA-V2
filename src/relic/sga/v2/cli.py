@@ -1,6 +1,5 @@
 import json
 import os
-import typing
 from argparse import ArgumentParser, Namespace
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -17,7 +16,7 @@ _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
 
 def _resolve_storage_type(s: Optional[str]) -> StorageType:
-    _HELPER = {
+    _word2storagetype = {
         "STORE": StorageType.STORE,
         "BUFFER": StorageType.BUFFER_COMPRESS,
         "STREAM": StorageType.STREAM_COMPRESS,
@@ -26,15 +25,15 @@ def _resolve_storage_type(s: Optional[str]) -> StorageType:
         return StorageType.STORE
 
     s = s.upper()
-    if s in _HELPER:
-        return _HELPER[s]
-    else:
-        return StorageType[s]
+    if s in _word2storagetype:
+        return _word2storagetype[s]
+
+    return StorageType[s]
 
 
 class RelicSgaPackV2Cli(CliPlugin):
     def _create_parser(
-            self, command_group: Optional[_SubParsersAction] = None
+        self, command_group: Optional[_SubParsersAction] = None
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
@@ -65,11 +64,14 @@ class RelicSgaPackV2Cli(CliPlugin):
         working_dir: str = ns.src_dir
         outfile: str = ns.out_sga
         config_file: str = ns.config_file
-        with open(config_file) as json_h:
+        with open(config_file,"r") as json_h:
             config: Dict[str, Any] = json.load(json_h)
 
         # Execute Command
         print(f"Packing `{outfile}`")
+
+        with fs.open_fs(working_dir) as fs:
+            SgaFsV2Packer.assemble(fs,)
 
         # Create 'SGA'
         sga = SgaFsV2()
@@ -78,9 +80,9 @@ class RelicSgaPackV2Cli(CliPlugin):
             {
                 "name": archive_name,  # Specify name of archive
                 "header_md5": "0"
-                              * 16,  # Must be present due to a bug, recalculated when packed
+                * 16,  # Must be present due to a bug, recalculated when packed
                 "file_md5": "0"
-                            * 16,  # Must be present due to a bug, recalculated when packed
+                * 16,  # Must be present due to a bug, recalculated when packed
             },
             "essence",
         )
@@ -131,7 +133,7 @@ class RelicSgaPackV2Cli(CliPlugin):
                     )
                     frontier.add(full_path)
                     if (
-                            sga_drive is None
+                        sga_drive is None
                     ):  # Lazily create drive, to avoid empty drives from being created
                         sga_drive = sga.create_drive(alias, name)
 
@@ -160,7 +162,7 @@ class RelicSgaPackV2Cli(CliPlugin):
 
 class RelicSgaRepackV2Cli(CliPlugin):
     def _create_parser(
-            self, command_group: Optional[_SubParsersAction] = None
+        self, command_group: Optional[_SubParsersAction] = None
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:

@@ -285,8 +285,10 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
                     modified=self.modified,
                 )
             if NS_ESSENCE in namespaces:
-                info["crc32"] = self.crc32
-                info["storage_type"] = self.storage_type
+                info[NS_ESSENCE] = {
+                    "crc32": self.crc32,
+                    "storage_type": self.storage_type
+                }
             return Info(info)
 
     def setinfo(self, info: Mapping[str, Mapping[str, object]]):
@@ -388,8 +390,10 @@ class SgaFsFileV2Mem(_SgaFsFileV2):
                 ResourceType.file, self._size, modified=self._modified
             )
         if NS_ESSENCE in namespaces:
-            info["crc32"] = self._crc32
-            info["storage_type"] = self._storage_type
+            info[NS_ESSENCE] = {
+                "crc32": self.crc32,
+                "storage_type": self.storage_type
+            }
         return Info(info)
 
     def setinfo(self, info: Mapping[str, Mapping[str, object]]):
@@ -1156,7 +1160,9 @@ class _SgaFsV2TocDisassembler:
         files = [sub_file.name for sub_file in folder.files]
 
         name = folder.name
-        parent_full_path = SgaPathResolver.join(path, name) if path is not None else name
+        parent_full_path = (
+            SgaPathResolver.join(path, name) if path is not None else name
+        )
         self.write_name(parent_full_path)
 
         for folder in folders:
@@ -1182,7 +1188,9 @@ class _SgaFsV2TocDisassembler:
             results.append(pair)
         return results
 
-    def write_fs_file(self, file: _SgaFsFileV2, write_back: Optional[int] = None) -> None:
+    def write_fs_file(
+            self, file: _SgaFsFileV2, write_back: Optional[int] = None
+    ) -> None:
         # index = self.file_count
 
         name = file.name
@@ -1198,12 +1206,22 @@ class _SgaFsV2TocDisassembler:
             name, modified, uncompressed_buffer, storage_type
         )
 
-        self.write_file(name_offset, storage_type, data_offset, comp_size, decomp_size, window_start=write_back)
+        self.write_file(
+            name_offset,
+            storage_type,
+            data_offset,
+            comp_size,
+            decomp_size,
+            window_start=write_back,
+        )
 
         # return index
 
     def write_fs_folder(
-            self, folder: _SgaFsFolderV2, path: Optional[str] = None, write_back: Optional[int] = None
+            self,
+            folder: _SgaFsFolderV2,
+            path: Optional[str] = None,
+            write_back: Optional[int] = None,
     ) -> None:
         name = folder.name
         full_path = SgaPathResolver.join(path, name) if path is not None else name
@@ -1319,7 +1337,9 @@ class _SgaFsV2Serializer:
         self.sga = sga
         self.out = handle
 
-        self.working_handle = BytesIO() if not (self.out.writable() and self.out.readable()) else self.out
+        self.working_handle = (
+            BytesIO() if not (self.out.writable() and self.out.readable()) else self.out
+        )
         self.game = game_format
         if name is None and hasattr(handle, "name"):  # Try to use file name
             name = os.path.basename(handle.name)
@@ -1488,8 +1508,18 @@ class _SgaFsV2Serializer:
 
         with BinaryWindow(handle, window_start, window_size) as window:
             toc_header = SgaTocHeaderV2(window)
-            areas = [toc_header.drive, toc_header.folder, toc_header.file, toc_header.name]
-            values = [(drive_pos, drive_count), (folder_pos, folder_count), (file_pos, file_count), (name_pos, name_count)]
+            areas = [
+                toc_header.drive,
+                toc_header.folder,
+                toc_header.file,
+                toc_header.name,
+            ]
+            values = [
+                (drive_pos, drive_count),
+                (folder_pos, folder_count),
+                (file_pos, file_count),
+                (name_pos, name_count),
+            ]
             for area, (offset, count) in zip(areas, values):
                 if offset is not None:
                     area.offset = offset
@@ -1531,7 +1561,7 @@ class _SgaFsV2Serializer:
 
 class SgaFsV2Packer:
     @classmethod
-    def assemble(cls, filesystem: fs.base.FS, **settings) -> SgaFsV2:
+    def assemble(cls, filesystem: fs.base.FS, manifest: PackingManifest, settings: Optional[PackingSettings] = None) -> SgaFsV2:
         raise NotImplementedError
 
     @classmethod

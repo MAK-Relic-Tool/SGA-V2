@@ -105,7 +105,7 @@ class SgaHeaderV2(SgaHeader):
 
     @property
     def file_md5(
-            self,
+        self,
     ) -> bytes:  # I marked this as a 'to do' but what did i need to 'to do'?
         return self._read_bytes(*self._FILE_MD5)
 
@@ -127,7 +127,7 @@ class SgaHeaderV2(SgaHeader):
 
     @property
     def header_md5(
-            self,
+        self,
     ) -> bytes:  # I marked this as a 'to do' but what did i need to 'to do'?
         return self._read_bytes(*self._TOC_MD5)
 
@@ -180,7 +180,16 @@ class SgaHeaderV2(SgaHeader):
         )  # TODO raise an explicit `not writable` error
 
     def __repr__(self):
-        return _repr_obj(self, "file_md5", "header_md5", "toc_pos", "toc_size", "data_pos", "data_size", name=self.name)
+        return _repr_obj(
+            self,
+            "file_md5",
+            "header_md5",
+            "toc_pos",
+            "toc_size",
+            "data_pos",
+            "data_size",
+            name=self.name,
+        )
 
 
 class SgaTocHeaderV2(SgaTocHeader):
@@ -348,10 +357,10 @@ class SgaTocFileDataHeaderV2Dow(BinaryWindow, LazyBinary):
 
 class SgaTocFileDataV2Dow:
     def __init__(
-            self,
-            toc_file: SgaTocFile,
-            name_window: SgaNameWindow,
-            data_window: BinaryWindow,
+        self,
+        toc_file: SgaTocFile,
+        name_window: SgaNameWindow,
+        data_window: BinaryWindow,
     ):
         self._toc_file = toc_file
         self._name_window = name_window
@@ -405,7 +414,7 @@ GAME_FORMAT_TOC_FILE_DATA = {
 class SgaTocV2(SgaToc):
     @classmethod
     def _determine_next_header_block_ptr(
-            cls, header: SgaTocHeaderV2, index: int = -1
+        cls, header: SgaTocHeaderV2, index: int = -1
     ) -> int:
         smallest = header.seek(0, os.SEEK_END)
         ptrs = [
@@ -505,13 +514,13 @@ class SgaFileV2(SgaFile):
         self._toc = SgaTocV2(self._header_window, game=game_format)
 
     def __verify(
-            self, cached: bool, error: bool, hasher: md5, expected: bytes, cache_name: str
+        self, cached: bool, error: bool, hasher: md5, expected: bytes, cache_name: str
     ):
         if (
-                "r" not in self._parent.mode
-                or error  # we can't use the cache if we want to error
-                or not cached
-                or not hasattr(self, cache_name)
+            "r" not in self._parent.mode
+            or error  # we can't use the cache if we want to error
+            or not cached
+            or not hasattr(self, cache_name)
         ):
             args: Tuple[BinaryIO, bytes] = self._parent, expected
             if not error:
