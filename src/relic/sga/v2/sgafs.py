@@ -6,6 +6,7 @@ import zlib
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
+from enum import Enum, auto
 from io import BytesIO
 from threading import RLock
 from typing import (
@@ -18,7 +19,7 @@ from typing import (
     Dict,
     Any,
     Tuple,
-    Collection,
+    Collection, TextIO, Iterator,
 )
 
 import fs.errors
@@ -27,7 +28,7 @@ from fs.base import FS
 from fs.info import Info
 from fs.mode import Mode
 from fs.subfs import SubFS
-from relic.core.errors import RelicToolError
+from relic.core.errors import RelicToolError, T
 from relic.sga.core import StorageType
 from relic.sga.core.definitions import MagicWord
 from relic.sga.core.hashtools import crc32, md5
@@ -1576,16 +1577,187 @@ class PackingStorageTypeResolver:
         raise NotImplementedError
 
 
+class ArcivParser:
+    EQUAL = "="
+    CURLY_BRACE_LEFT = "{"
+    CURLY_BRACE_RIGHT = "}"
+    QUOTE = '"'
+    COMMA =","
+    SPACE = " "
+    NEW_LINE = "\n"
+    TAB = "\t"
+    BRACE_LEFT = "["
+    BRACE_RIGHT = "]"
+
+    class Token(Enum):
+        NAME = auto()
+        EQUAL = auto()
+        CURLY_BRACE_LEFT = auto()
+        CURLY_BRACE_RIGHT = auto()
+        QUOTE = auto()
+        COMMA = auto()
+        SPACE = auto()
+        NEW_LINE = auto()
+        TAB = auto()
+        BRACE_LEFT = auto()
+        BRACE_RIGHT = auto()
+
+    WS_TOKEN = [Token.SPACE,Token.NEW_LINE,Token.TAB]
+
+    def _read_until_next(self, file: TextIO, *chars: str, include_eof: bool = True) -> Tuple[
+    str, Optional[str]]:
+        parts = []
+        while True:
+            c = file.read(1)
+            if c is None or len(c) == 0:
+                break
+            if c in chars:
+                return "".join(parts), c
+            parts.append(c)
+        if include_eof:
+            return "".join(parts), None
+        raise NotImplementedError
+
+    def _tokenize(self, file: TextIO) -> Iterable[Tuple[str,Token]]:
+        symbols = ['=', '{', '}', '"', ',', ' ', '\n', '\t', "[", "]"]
+        tokens = [self.Token.EQUAL,self.Token.CURLY_BRACE_LEFT,self.Token.CURLY_BRACE_RIGHT,self.Token.QUOTE,self.Token.COMMA,
+                  self.Token.SPACE,self.Token.NEW_LINE,self.Token.TAB,self.Token.BRACE_LEFT,self.Token.BRACE_RIGHT]
+        while True:
+            block, symbol = self._read_until_next(file, *symbols)
+            if len(block) > 0:
+                yield block, self.Token.NAME
+            if symbol is None:
+                break
+            token = tokens[symbols.index(symbol)]
+            yield symbol, token
+
+    def _partial_iter(self,iterator:Iterator[T]) -> T:
+        while True:
+            yield next(iterator)
+
+    def _skip_ws(self, tokens:Iterator[Tuple[str,Token]]):
+        for value, token in self._partial_iter(tokens):
+            if token in self.WS_TOKEN:
+                continue
+            break
+
+    def _next_is(self, tokens:Iterator[Tuple[str,Token]], *expected:Token):
+        value, token = next(tokens)
+
+        if token not in expected:
+            raise RelicToolError(f"Recieved unexpected token '{token}', expected any of '{expected}'!")
+
+        return value, token
+
+    def _parse_curly_block(self, tokens:Iterator[Tuple[str,Token]]) -> Union[Dict,List]:
+        self._skip_ws(tokens)
+        start, _ = self._next_is(tokens, self.Token.CURLY_BRACE_LEFT)
+        content, consumed_end = self._parse_curly_block_content(tokens)
+        if not consumed_end:
+            self._skip_ws(tokens)
+            end, _ = self._next_is(tokens,self.Token.CURLY_BRACE_RIGHT)
+        return content
+
+    def _parse_curly_content(self, tokens:Iterator[Tuple[str,Token]]) -> Tuple[Union[Dict,List], bool]:
+        self._skip_ws(tokens)
+        first_content, first_content_token = self._next_is(tokens,self.Token.CURLY_BRACE_LEFT,self.Token.NAME,self.Token.CURLY_BRACE_RIGHT)
+
+        if first_content_token == self.Token.NAME:
+            ctx = {}
+            ctx[first_content] = self._parse_assignment(tokens,first_content)
+
+
+
+        start, _ = self._next_is(tokens, self.Token.CURLY_BRACE_LEFT)
+        content = self._parse_curly_block_content(tokens)
+        self._skip_ws(tokens)
+        end, _ = self._next_is(tokens,self.Token.CURLY_BRACE_RIGHT)
+        return content
+
+
+
+
+
+
+    def _parse_assignment(self, tokens:Iterator[Tuple[str,Token]], name:Optional[str]=None) -> Tuple[str,Union[Dict,List]]:
+        self._skip_ws(tokens)
+        if name is None: # Allows us to enter the block conditionally if we encounter a name when we could encounter other syntaxes
+            name, _ = self._next_is(tokens,self.Token.NAME)
+            self._skip_ws(tokens)
+        _ = self._next_is(tokens,self.Token.EQUAL)
+        self._skip_ws(tokens)
+        block = self._parse_curly_block(tokens)
+        return name, block
+
+
+
+
+    def _parser(self, tokens:Iterable[Tuple[str,Token]]):
+
+
+
+
+    def parse(self, file: Union[TextIO, str]):
+        # load and parse
+        if isinstance(file, str):
+            with open(file, "r") as h:
+                for token in self._tokenize(h):
+                    print(token.replace("\n", "\\n").replace("\t", "\\t").replace(" ","\\w"))
+        else:
+            for token in self._tokenize(file):
+                print(token.replace("\n", "\\n").replace("\t", "\\t").replace(" ","\\w"))
+
+        # parse
+        stack_ptr = 0  # Count {}
+
+
+@dataclass
 class PackingManifest:
+    """A class-based approximation of the '.arciv' format."""
+
+    @dataclass
     class ArchiveHeader:
         name: str
 
+    @dataclass
+    class TocFileItem:
+        file: str  # name
+        path: str
+        size: int
+        store: PackingStorageType
+
+    @dataclass
+    class TocFolderInfoItem:
+        folder: str  # name
+        path: str
+
+    @dataclass
+    class TocFolderItem:
+        files: List[PackingManifest.TocFileItem]
+        folders: List[PackingManifest.TocFolderItem]
+        info: PackingManifest.TocFolderInfoItem
+
+    @dataclass
+    class TocStorage:
+        min_size: int
+        max_size: int
+        storage: StorageType
+        wildcard: str
+
+    @dataclass
+    class TocHeader:
+        alias: str
+        name: str
+        root_path: str
+        storage: List[PackingManifest.TocStorage]
+
+    @dataclass
     class TocItem:
-        ...
+        header: PackingManifest.TocHeader
+        root_folder: PackingManifest.TocFolderItem
 
     header: ArchiveHeader
     toc_list: List[TocItem]
-    ...
 
 
 class PackingScanner:
@@ -1606,7 +1778,8 @@ class PackingSettings:
 
 class SgaFsV2Packer:
     @classmethod
-    def assemble(cls, filesystem: fs.base.FS, manifest: PackingManifest, settings: Optional[PackingSettings] = None) -> SgaFsV2:
+    def assemble(cls, filesystem: fs.base.FS, manifest: PackingManifest,
+                 settings: Optional[PackingSettings] = None) -> SgaFsV2:
         raise NotImplementedError
 
     @classmethod
