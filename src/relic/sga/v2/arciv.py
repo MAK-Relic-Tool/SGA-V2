@@ -1,26 +1,12 @@
-from enum import Enum, auto
+from enum import Enum
 from io import StringIO
-from typing import TextIO, Tuple, Optional, Iterable, Iterator, Union, Dict, List, IO, Any
+from typing import TextIO, Tuple, Optional, Iterable, Union, Dict, List, Any
 
 from relic.core.errors import RelicToolError
 
 
 class Token(Enum):
-    TEXT = auto()
-    EQUAL = auto()
-    CURLY_BRACE_LEFT = auto()
-    CURLY_BRACE_RIGHT = auto()
-    QUOTE = auto()
-    COMMA = auto()
-    SPACE = auto()
-    NEW_LINE = auto()
-    TAB = auto()
-    BRACE_LEFT = auto()
-    BRACE_RIGHT = auto()
-    EOF = auto()
-
-
-class TokenValues(Enum):
+    TEXT = Any
     EQUAL = "="
     CURLY_BRACE_LEFT = "{"
     CURLY_BRACE_RIGHT = "}"
@@ -33,128 +19,160 @@ class TokenValues(Enum):
     BRACE_RIGHT = "]"
     EOF = None
 
-    @classmethod
-    def all(cls):
-        return [_.value for _ in cls]
 
-    @classmethod
-    def get_value(cls, token: Token):
-        return getattr(cls, token.name) if token is not Token.TEXT else None
+class TokenStream:
+    WS_TOKEN = [Token.SPACE, Token.NEW_LINE, Token.TAB]
 
-    @classmethod
-    def get_token(cls, value: str):
-        for t in cls:
-            if t.value == value:
-                return getattr(Token, t.name)
-        raise KeyError(value)
-
-
-class Lexer:
-    class TokenStream:
-        WS_TOKEN = [Token.SPACE, Token.NEW_LINE, Token.TAB]
-
-        def __init__(self, tokens: Iterable[Tuple[str, Token]]):
-            self._now = 0
-            self._reader = iter(tokens)
-            self._tokens = []
-            self._nonws_token = []  # FOR DEBUGGING
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc_val, exc_tb):
-            ...
-
-        def _read(self, pos) -> Optional[Tuple[str, Token]]:
-            if len(self._tokens) <= pos:  # Early exit on empty case
-                try:
-                    read = next(self._reader)
-                except StopIteration:
-                    return None
-                if read is None:
-                    return None
-                self._tokens.append(read)
-                if read[1] not in self.WS_TOKEN:
-                    self._nonws_token.append(read)
-                return read
-            return self._tokens[pos]
-
-        def next(self, skip_whitespace: bool = True, advance: bool = False) -> Optional[Tuple[str, Token]]:
-            offset = 0
-            while skip_whitespace:
-                current = self._read(self._now + offset)
-                if current is None:
-                    return None
-                if current[1] in self.WS_TOKEN:
-                    offset += 1
-                    continue
-                skip_whitespace = False
-
-            current = self._read(self._now + offset)
-            if current is None:
-                return None
-            if advance:
-                self._now += offset + 1  # add one because we want the NEXT token
-            return current
-
-        def read(self, skip_whitespace: bool = True) -> Optional[Tuple[str, Token]]:
-            return self.next(skip_whitespace, advance=True)
-
-        def peek(self, skip_whitespace: bool = True) -> Optional[Tuple[str, Token]]:
-            return self.next(skip_whitespace, advance=False)
-
-        def empty(self, skip_whitespace: bool = True) -> bool:
-            return self.peek(skip_whitespace) is not None
-
-    def __init__(self, text: Union[TextIO, str]):
-        if isinstance(text, str):
-            with StringIO(text) as handle:
-                tokens = self._tokenize(handle)
-        else:
-            tokens = self._tokenize(text)
-
-        self.stream = self.create_stream(tokens)  # tokens are iterable
+    def __init__(self, tokens: Iterable[Tuple[str, Token]]):
+        self._now = 0
+        self._reader = iter(tokens)
+        self._tokens = []
 
     def __enter__(self):
-        return self.stream
+        return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         ...
 
-    @classmethod
-    def create_stream(cls, tokens: Iterable[Tuple[str, Token]]) -> TokenStream:
-        return cls.TokenStream(tokens)
+    def _read(self, pos) -> Optional[Tuple[str, Token]]:
+        if len(self._tokens) <= pos:  # Early exit on empty case
+            try:
+                read = next(self._reader)
+            except StopIteration:
+                return None
+            if read is None:
+                return None
+            self._tokens.append(read)
+            return read
+        return self._tokens[pos]
 
-    @classmethod
-    def _read_until_next(cls, file: TextIO, *chars: str, include_eof: bool = True) -> Tuple[
-        str, Optional[str]]:
+    def next(self, skip_whitespace: bool = True, advance: bool = False) -> Optional[Tuple[str, Token]]:
+        offset = 0
+        while skip_whitespace:
+            current = self._read(self._now + offset)
+            if current is None:
+                return None
+            if current[1] in self.WS_TOKEN:
+                offset += 1
+                continue
+            skip_whitespace = False
+
+        current = self._read(self._now + offset)
+        if current is None:
+            return None
+        if advance:
+            self._now += offset + 1  # add one because we want the NEXT token
+        return current
+
+    def read(self, skip_whitespace: bool = True) -> Optional[Tuple[str, Token]]:
+        return self.next(skip_whitespace, advance=True)
+
+    def peek(self, skip_whitespace: bool = True) -> Optional[Tuple[str, Token]]:
+        return self.next(skip_whitespace, advance=False)
+
+    def empty(self, skip_whitespace: bool = True) -> bool:
+        return self.peek(skip_whitespace) is not None
+
+
+_KiB = 1024
+_4KiB = 4 * _KiB
+
+
+class Lexer:
+    def __init__(self, text: Union[TextIO, str], buffer_size: int = _4KiB):
+        if isinstance(text, str):
+            text = self._handle = StringIO(text)
+        else:
+            self._handle = None
+
+        self._reader = text
+        self._buffer = None
+        self._buffer_size = buffer_size
+        self._now = 0
+        self._symbols = [c for c in Token if c.value is not None and c.value is not Any]  # Catch EOF and TEXT; remove them from symbols
+        self._symbol_values = [c.value for c in self._symbols]
+
+    def __enter__(self):
+        return self.tokenize()
+
+    def close(self):
+        if self._handle is not None:
+            self._handle.close()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()
+        ...
+
+    def __iter__(self):
+        yield from self.tokenize()
+
+    def _read_buffer(self) -> Optional[str]:
+        if self._buffer is None or self._now >= len(self._buffer):
+            self._buffer = self._reader.read(self._buffer_size)
+            self._now = 0
+        if len(self._buffer) == 0:
+            return None
+        else:
+            return self._buffer[self._now:]
+
+    def _read_until_next(self, include_eof: bool = True) -> Tuple[str, Token]:
         parts = []
         while True:
-            c = file.read(1)
-            if c is None or len(c) == 0:
-                break
-            if c in chars:
-                return "".join(parts), c
-            parts.append(c)
-        if include_eof:
-            return "".join(parts), None
-        raise NotImplementedError
+            buffer = self._read_buffer()
+            if buffer is None:
+                if include_eof:
+                    text = "".join(parts)
+                    return text, Token.EOF
+                else:
+                    raise NotImplementedError("Token stream trying to read past end of file!")
 
-    @classmethod
-    def _tokenize(cls, file: TextIO) -> Iterable[Tuple[str, Token]]:
-        symbols = TokenValues.all()
+            # scan
+            for i, c in enumerate(buffer):
+                if c in self._symbol_values:
+                    self._now += i + 1
+                    partial_part = buffer[:i]
+                    parts.append(partial_part)
+                    text = "".join(parts)
+                    return text, Token(c)
+
+            parts.append(buffer)
+            self._now += len(buffer)
+            continue
+
+            # index
+            # min_symbol = len(buffer)
+            # found = None
+            # for symbol in self._symbols:
+            #     try:
+            #         min_symbol = buffer.index(symbol.value, 0, min_symbol)
+            #         found = symbol
+            #     except ValueError:
+            #         continue
+            #
+            # # No matches in this block; read next
+            # if found is None:
+            #     parts.append(buffer)
+            #     self._now += len(buffer)
+            #     continue
+            #
+            # self._now += min_symbol + 1
+            # partial_part = buffer[:min_symbol]
+            # parts.append(partial_part)
+            # text = "".join(parts)
+            # return text, found
+
+    def tokenize(self) -> Iterable[Tuple[Optional[str], Token]]:
         while True:
-            block, symbol = cls._read_until_next(file, *symbols)
+            block, token = self._read_until_next()
             if len(block) > 0:
                 yield block, Token.TEXT
-            token = TokenValues.get_token(symbol)
-            yield symbol, token
-            if symbol is None:  # EOF; break out of loop
+            yield token.value, token
+            if token is Token.EOF:  # EOF; break out of loop
                 break
 
 
 class Parser:
-    def __init__(self, stream: Lexer.TokenStream):
+    def __init__(self, stream: TokenStream):
         self.stream = stream
 
     def __enter__(self):
@@ -173,10 +191,14 @@ class Parser:
 
         value, token = pair
         if token not in expected:
-            N = 64
-            TOKEN_DBG_PARTS = [f"\t\t{t[1].name.ljust(len('CURLY_BRACE_LEFT'))} :\t'{t[0]}'" for t in self.stream._nonws_token[-N:]]
-            TOKEN_DBG = "\n".join(TOKEN_DBG_PARTS)
-            raise RelicToolError(f"Recieved unexpected token '{token}', expected any of '{expected}'!\n\tLast '{N}' tokens:\n{TOKEN_DBG}")
+            X = 64
+            _GATHER_LAST_X = self.stream._tokens[-X:]
+            _NONWS = [t for t in _GATHER_LAST_X if t[1] not in TokenStream.WS_TOKEN]
+            def _escape(_v:str) -> str:
+                return _v.replace("\t","\\t").replace("\n","\\n") if _v is not None else _v
+            LINES = [f"\t\t{t.name.ljust(16)} : {_escape(v)}" for v, t in _NONWS]
+            TOKEN_STR = "\n".join(LINES)
+            raise RelicToolError(f"Recieved unexpected token '{token}', expected any of '{expected}'!\n\tLast '{X}' tokens (ignoring whitespace '{len(_NONWS)}'):\n{TOKEN_STR}")
 
         return value, token
 
@@ -216,10 +238,10 @@ class Parser:
             name, value = self._parse_assignment()
             dict_items[name] = value
 
-            if self.check_next(Token.CURLY_BRACE_RIGHT): # Parent's end brace
+            if self.check_next(Token.CURLY_BRACE_RIGHT):  # Parent's end brace
                 break  # Assume implied comma
 
-            if is_root and self.check_next(Token.EOF): # Root wont find a parent's end brace; and tries to consume a comma; terminate if eof reached
+            if is_root and self.check_next(Token.EOF):  # Root wont find a parent's end brace; and tries to consume a comma; terminate if eof reached
                 break  # No Comma in root dict
 
             self.get_next(Token.COMMA)  # Eat Comma
@@ -292,14 +314,14 @@ class Parser:
 
         return name, value
 
-        # parse
-        stack_ptr = 0  # Count {}
+
 
 class Formatter:
-    def __init__(self, indent:str="\t"):
+    def __init__(self, indent: str = "\t"):
         self._indent = indent
 
-    def format(self, d:str):
+    def format(self, d: str):
+        ...
 
 
 def load(f: Union[TextIO, str]):
@@ -308,19 +330,21 @@ def load(f: Union[TextIO, str]):
             return load(h)
 
     with Lexer(f) as tokens:
-        with Parser(tokens) as parsed:
-            return parsed
+        with TokenStream(tokens) as stream:
+            with Parser(stream) as parsed:
+                return parsed
 
 
-def loads(f: str):
+def loads(f: str) -> Dict:
     with StringIO(f) as h:
         return load(h)
 
-def dump(f: Union[TextIO, str], d:Dict[str,Any]):
+
+def dump(f: Union[TextIO, str], d: Dict[str, Any], **settings):
     if isinstance(f, str):
         with open(f, "w") as h:
-            return dump(h)
+            return dump(h, d)
 
-    with Lexer(f) as tokens:
-        with Parser(tokens) as parsed:
-            return parsed
+    with Formatter(**settings) as formatter:
+        for token in formatter:
+            f.write(token)
