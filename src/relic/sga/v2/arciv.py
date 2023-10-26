@@ -1,5 +1,10 @@
+import dataclasses
+from contextlib import contextmanager
+from dataclasses import dataclass
 from enum import Enum
 from io import StringIO
+from os import PathLike
+from pathlib import Path, PurePath
 from typing import TextIO, Tuple, Optional, Iterable, Union, Dict, List, Any
 
 from relic.core.errors import RelicToolError
@@ -194,8 +199,10 @@ class Parser:
             X = 64
             _GATHER_LAST_X = self.stream._tokens[-X:]
             _NONWS = [t for t in _GATHER_LAST_X if t[1] not in TokenStream.WS_TOKEN]
-            def _escape(_v:str) -> str:
-                return _v.replace("\t","\\t").replace("\n","\\n") if _v is not None else _v
+
+            def _escape(_v: str) -> str:
+                return _v.replace("\t", "\\t").replace("\n", "\\n") if _v is not None else _v
+
             LINES = [f"\t\t{t.name.ljust(16)} : {_escape(v)}" for v, t in _NONWS]
             TOKEN_STR = "\n".join(LINES)
             raise RelicToolError(f"Recieved unexpected token '{token}', expected any of '{expected}'!\n\tLast '{X}' tokens (ignoring whitespace '{len(_NONWS)}'):\n{TOKEN_STR}")
@@ -276,7 +283,8 @@ class Parser:
                 break
             parts.append(content)
         _ = self.get_next(Token.BRACE_RIGHT)
-        return "".join(parts)
+        full_string = "".join(parts)
+        return Path(full_string)
 
     def _parse_string(self):
         parts = []
@@ -302,7 +310,7 @@ class Parser:
         _, assign_type = self.get_next(Token.BRACE_LEFT, Token.CURLY_BRACE_LEFT, Token.QUOTE, Token.TEXT, advance=False)
 
         if assign_type == Token.BRACE_LEFT:  # Path (String)
-            value = f'"{self._parse_path()}"'
+            value = self._parse_path()
         elif assign_type == Token.CURLY_BRACE_LEFT:  # Dict | List
             value = self._parse_block()
         elif assign_type == Token.QUOTE:  # String
@@ -315,13 +323,94 @@ class Parser:
         return name, value
 
 
+class ArcivEncoder:
+    def encode(self, obj: Any) -> Union[str, PathLike, int, str, float, Dict, List]:
+        if dataclasses.is_dataclass(obj):
+            return dataclasses.asdict(obj)
+        if isinstance(obj, (str, int, float, dict, list, PathLike)):
+            return obj
+        raise NotImplementedError(f"Cannot encode '{obj}' ({obj.__module__}.{obj.__qualname__})")
+
 
 class Formatter:
-    def __init__(self, indent: str = "\t"):
-        self._indent = indent
+    def __init__(self, encoder: ArcivEncoder = None, indent: Optional[str] = "\t", newline: Optional[str] = "\n", whitespace: Optional[str] = " "):
+        self._indent = indent if indent is not None else ""
+        self._encoder = encoder or ArcivEncoder()
+        self._indent_level = 0
+        self._newline = newline if newline is not None else ""
+        self._whitespace = whitespace if whitespace is not None else ""
 
-    def format(self, d: str):
-        ...
+    @contextmanager
+    def _enter_indent(self):
+        self._indent_level += 1
+        yield
+        self._indent_level -= 1
+
+    def _formatted(self, *values: str, newline: bool = False, comma: bool = False, no_indent:bool=False) -> Iterable[str]:
+        if not no_indent and self._indent != "" and len(values) > 0 and self._indent_level > 0:  # Dont indent if we only want comma / newline
+            yield self._indent_level * self._indent
+        for i, v in enumerate(values):
+            yield v
+            if i < len(values) - 1 and self._whitespace != "":
+                yield self._whitespace
+        if comma:
+            yield ","
+
+        if newline and self._newline != "":
+            yield self._newline
+
+    def _format_str(self, value: str, *, in_collection:bool=False, in_assignment:bool=False) -> Iterable[str]:
+        yield from self._formatted(f'"{value}"', comma=in_collection, newline=in_assignment, no_indent=in_assignment)
+
+    def _format_number(self, value: Union[float, int], *, in_collection=False, in_assignment:bool=False) -> Iterable[str]:
+        yield from self._formatted(str(value), comma=in_collection, newline=in_assignment,  no_indent=in_assignment)
+
+    def _format_path(self, value: PathLike, *, in_collection=False, in_assignment:bool=False) -> Iterable[str]:
+        yield from self._formatted(f'[[{value.__fspath__()}]]', comma=in_collection, newline=in_assignment, no_indent=in_assignment)
+
+    def _format_collection(self, encoded: Union[List, Dict], *, in_collection=False, in_assignment:bool=False) -> Iterable[str]:
+        if in_assignment:
+            yield from self._formatted(newline=True)
+        if isinstance(encoded, list):
+            yield from self._formatted("{", newline=True)
+            with self._enter_indent():
+                for i, item in enumerate(encoded):
+                    yield from self._format_item(item, in_collection=i != len(encoded) - 1)  # Don't add comma to last item
+            yield from self._formatted("}", comma=in_collection, newline=True)
+
+        elif isinstance(encoded, dict):
+            yield from self._formatted("{", newline=True)
+            with self._enter_indent():
+                for i, (key, value) in enumerate(encoded.items()):
+                    yield from self._format_key_value(key, value, in_collection=i != len(encoded) - 1)  # Don't add comma to last item
+            yield from self._formatted("}", comma=in_collection, newline=True)
+
+        else:
+            raise NotImplementedError(f"Cannot format '{encoded}' ({encoded.__module__}.{encoded.__qualname__})")
+
+    def _format_item(self, value: Any, *, in_collection=False, in_assignment: bool = False, encode: bool = True) -> Iterable[str]:
+        encoded = self._encoder.encode(value) if encode else value
+        if isinstance(encoded, (list, dict)):
+            yield from self._format_collection(encoded, in_collection=in_collection, in_assignment=in_assignment)
+        elif isinstance(encoded, str):
+            yield from self._format_str(encoded, in_collection=in_collection,in_assignment=in_assignment)
+        elif isinstance(encoded, (int, float)):
+            yield from self._format_number(encoded,in_collection=in_collection, in_assignment=in_assignment)
+        elif isinstance(encoded, PathLike):
+            yield from self._format_path(encoded,in_collection=in_collection, in_assignment=in_assignment)
+        else:
+            raise NotImplementedError(f"Cannot format '{encoded}' ({encoded.__module__}.{encoded.__qualname__})")
+
+    def _format_key_value(self, key: str, value: Any, *, in_collection: bool = False) -> Iterable[str]:
+        yield from self._formatted(key, "=")
+        if self._whitespace != "":
+            yield from self._whitespace
+        yield from self._format_item(value, in_assignment=True, in_collection=in_collection)
+        # yield from self._formatted(newline=True)
+
+    def format(self, data: Any) -> Iterable[str]:
+        for key, value in data.items():
+            yield from self._format_key_value(key, value)
 
 
 def load(f: Union[TextIO, str]):
@@ -340,11 +429,16 @@ def loads(f: str) -> Dict:
         return load(h)
 
 
-def dump(f: Union[TextIO, str], d: Dict[str, Any], **settings):
+def dump(f: Union[TextIO, str], data: Any, **settings):
     if isinstance(f, str):
         with open(f, "w") as h:
-            return dump(h, d)
+            return dump(h, data, **settings)
+    formatter = Formatter(**settings)
+    for token in formatter.format(data):
+        f.write(token)
 
-    with Formatter(**settings) as formatter:
-        for token in formatter:
-            f.write(token)
+
+def dumps(data: Any, **settings) -> str:
+    with StringIO() as h:
+        dump(h, data, **settings)
+        return h.getvalue()
