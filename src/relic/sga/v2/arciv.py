@@ -9,7 +9,6 @@ from typing import TextIO, Tuple, Optional, Iterable, Union, Dict, List, Any
 
 from relic.core.errors import RelicToolError
 
-
 class Token(Enum):
     TEXT = Any
     EQUAL = "="
@@ -408,9 +407,16 @@ class Formatter:
         yield from self._format_item(value, in_assignment=True, in_collection=in_collection)
         # yield from self._formatted(newline=True)
 
-    def format(self, data: Any) -> Iterable[str]:
+    def formatting(self, data: Any) -> Iterable[str]:
         for key, value in data.items():
             yield from self._format_key_value(key, value)
+
+    def format(self, data:Any):
+        with StringIO() as h:
+            for _ in self.formatting(data):
+                h.write(_)
+            return h.getvalue()
+
 
 
 def load(f: Union[TextIO, str]):
@@ -434,7 +440,7 @@ def dump(f: Union[TextIO, str], data: Any, **settings):
         with open(f, "w") as h:
             return dump(h, data, **settings)
     formatter = Formatter(**settings)
-    for token in formatter.format(data):
+    for token in formatter.formatting(data):
         f.write(token)
 
 
