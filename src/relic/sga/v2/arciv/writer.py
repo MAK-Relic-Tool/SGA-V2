@@ -1,10 +1,12 @@
+from __future__ import annotations
+
+import dataclasses
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import StringIO
 from os import PathLike
 from typing import Optional, Iterable, Union, List, Dict, Any, TextIO
 
-from relic.sga.v2.arciv.legacy import ArcivEncoder
 
 
 @dataclass
@@ -195,3 +197,26 @@ class ArcivWriter:
 
         for token in self.tokens(data):
             fp.write(token)
+
+
+class ArcivEncoder:
+    def default(
+        self, obj: Any
+    ) -> Union[str, PathLike[str], int, float, Dict[str, Any], List[Any]]:
+        if isinstance(obj,_ArcivSpecialEncodable):
+            # Special case to handle the _Arciv Dataclass and its parts
+            #   These classes may not map 1-1 to the file; such as the root; which has an implied ARCHIVE = field
+            return obj.to_parser_dict()
+        if dataclasses.is_dataclass(obj):
+            return dataclasses.asdict(obj)
+        if isinstance(obj, (str, int, float, dict, list, PathLike)):
+            return obj
+        raise NotImplementedError(
+            f"Cannot encode '{obj}' ({obj.__module__}.{obj.__qualname__})"
+        )
+
+
+class _ArcivSpecialEncodable:
+    """Marks the class as needing special handling when automatically being encoded"""
+    def to_parser_dict(self) -> Dict[str,Any]:
+        raise NotImplementedError

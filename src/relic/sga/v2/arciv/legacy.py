@@ -340,18 +340,6 @@ class Parser:
         return name, value
 
 
-class ArcivEncoder:
-    def default(
-        self, obj: Any
-    ) -> Union[str, PathLike[str], int, float, Dict[str, Any], List[Any]]:
-        if dataclasses.is_dataclass(obj):
-            return dataclasses.asdict(obj)
-        if isinstance(obj, (str, int, float, dict, list, PathLike)):
-            return obj
-        raise NotImplementedError(
-            f"Cannot encode '{obj}' ({obj.__module__}.{obj.__qualname__})"
-        )
-
 
 def load(f: Union[TextIO, str]) -> Dict[str, Any]:
     if isinstance(f, str):
