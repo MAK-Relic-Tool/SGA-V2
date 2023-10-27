@@ -1,4 +1,3 @@
-from pathlib import Path
 from typing import Any
 
 from ply import lex
@@ -65,8 +64,7 @@ def t_NUMBER(t: LexToken) -> LexToken:
 def t_PATH(t: LexToken) -> LexToken:
     r"\[\[.*?\]\]"
     stripped = t.value[2:-2]  # strip brackets
-    # We use path to differentiate the data from a string; also it does need to exist for packing so...
-    t.value = Path(stripped)
+    t.value = stripped
     return t
 
 
