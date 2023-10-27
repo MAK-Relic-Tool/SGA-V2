@@ -1,11 +1,20 @@
 from io import StringIO
 from typing import Union, TextIO, Dict, Any, Optional
 
+from relic.sga.v2.arciv.dclass import Arciv
 from relic.sga.v2.arciv.legacy import load as legacy_load, ArcivEncoder
 from relic.sga.v2.arciv.lexer import build as build_lexer
 from relic.sga.v2.arciv.parser import build as build_parser
-from relic.sga.v2.arciv.writer import ArcivWriter, ArcivWriterSettings
+from relic.sga.v2.arciv.writer import ArcivWriter, ArcivWriterSettings, ArcivEncoder
 
+
+def parse(f: Union[TextIO, str], *, legacy_mode: bool = False) -> Arciv:
+    data = load(f,legacy_mode=legacy_mode)
+    return Arciv.from_parser(data)
+
+def parses(f: str, *, legacy_mode: bool = False) -> Arciv:
+    data = loads(f,legacy_mode=legacy_mode)
+    return Arciv.from_parser(data)
 
 def load(f: Union[TextIO, str], *, legacy_mode: bool = False) -> Dict[str, Any]:
     if isinstance(f, str):
@@ -49,5 +58,5 @@ __all__ = [
     "dumps",
     "ArcivWriter",
     "ArcivWriterSettings",
-    "ArcivEncoder",
+    "Arciv"
 ]
