@@ -1,8 +1,9 @@
 from ply import yacc
-from ply.lex import Lexer
 from ply.yacc import LRParser
 
-tokens = Lexer.tokens
+from relic.sga.v2.arciv import lexer
+
+tokens = lexer.tokens
 
 
 #
