@@ -2,13 +2,13 @@ from io import StringIO
 from typing import Union, TextIO, Dict, Any, Optional
 
 from relic.sga.v2.arciv.dclass import Arciv
-from relic.sga.v2.arciv.legacy import load as legacy_load, ArcivEncoder
+from relic.sga.v2.arciv.legacy import load as legacy_load
 from relic.sga.v2.arciv.lexer import build as build_lexer
 from relic.sga.v2.arciv.parser import build as build_parser
 from relic.sga.v2.arciv.writer import ArcivWriter, ArcivWriterSettings, ArcivEncoder
 
 
-def parse(f: Union[TextIO, str], *, legacy_mode: bool = False) -> Arciv:
+def parse(f: TextIO, *, legacy_mode: bool = False) -> Arciv:
     data = load(f,legacy_mode=legacy_mode)
     return Arciv.from_parser(data)
 
@@ -16,11 +16,7 @@ def parses(f: str, *, legacy_mode: bool = False) -> Arciv:
     data = loads(f,legacy_mode=legacy_mode)
     return Arciv.from_parser(data)
 
-def load(f: Union[TextIO, str], *, legacy_mode: bool = False) -> Dict[str, Any]:
-    if isinstance(f, str):
-        with open(f, "r") as h:
-            return load(h)
-
+def load(f: TextIO, *, legacy_mode: bool = False) -> Dict[str, Any]:
     if legacy_mode:
         return legacy_load(f)
     else:
@@ -35,7 +31,7 @@ def loads(f: str, *, legacy_mode: bool = False) -> Dict[str, Any]:
 
 
 def dump(
-    f: Union[TextIO, str],
+    f: TextIO,
     data: Any,
     settings: Optional[ArcivWriterSettings],
     encoder: Optional[ArcivEncoder],

@@ -515,7 +515,7 @@ class SgaFileV2(SgaFile):
 
     def __verify(
         self, cached: bool, error: bool, hasher: md5, expected: bytes, cache_name: str
-    ):
+    ) -> bool:
         if (
             "r" not in self._parent.mode
             or error  # we can't use the cache if we want to error

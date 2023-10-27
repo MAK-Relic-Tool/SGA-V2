@@ -188,13 +188,7 @@ class ArcivWriter:
             self.writef(fp, data)
             return fp.getvalue()
 
-    def writef(self, fp: Union[str, TextIO], data: Any) -> None:
-        if isinstance(fp, str):
-            with open(fp, "w") as true_fp:
-                return self.writef(
-                    true_fp, data
-                )  # Return ensures we dont fall into the TextIO block below
-
+    def writef(self, fp: TextIO, data: Any) -> None:
         for token in self.tokens(data):
             fp.write(token)
 

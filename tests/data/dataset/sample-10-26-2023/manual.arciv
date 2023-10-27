@@ -60,7 +60,7 @@ Archive = {
 			{
 				Alias = "data",
 				Name = "testdata",
-				<cwd>\RootPath = [[<cwd>\Root\]],
+				RootPath = [[<cwd>\Root\]],
 				Storage =  
 				{
 					{

@@ -23,7 +23,7 @@ class TocFileItem(_ArcivSpecialEncodable):
     Store: Optional[StorageType]
 
     @classmethod
-    def from_parser(cls, d:Dict[str,Any]):
+    def from_parser(cls, d:Dict[str,Any]) -> TocFileItem:
         storage_value:int = d["Store"]
         if storage_value == -1:
             storage = None
@@ -50,9 +50,9 @@ class TocFolderInfo:
 
 @dataclass
 class TocFolderItem:
-    files: List[TocFileItem]
-    folders: List[TocFolderItem]
-    info: TocFolderInfo
+    Files: List[TocFileItem]
+    Folders: List[TocFolderItem]
+    FolderInfo: TocFolderInfo
 
     @classmethod
     def from_parser(cls, d:Dict[str,Any]) -> TocFolderItem:
@@ -60,7 +60,7 @@ class TocFolderItem:
         folders = [TocFolderItem.from_parser(folder) for folder in d["Folders"]]
         folder_info = TocFolderInfo(**d["FolderInfo"])
 
-        return cls(files=files,folders=folders,info=folder_info)
+        return cls(Files=files,Folders=folders,FolderInfo=folder_info)
 
 
 @dataclass
@@ -108,8 +108,9 @@ class TocItem:
 
     @classmethod
     def from_parser(cls, d:Dict[str,Any]) -> TocItem:
-
-        return cls(TOCHeader=TocHeader(**d["TOCHeader"]),RootFolder=TocFolderItem(**d["RootFolder"]))
+        toc_header = TocHeader(**d["TOCHeader"])
+        root_folder = TocFolderItem.from_parser(d["RootFolder"])
+        return cls(TOCHeader=toc_header,RootFolder=root_folder)
 
 @dataclass
 class Arciv(_ArcivSpecialEncodable):
@@ -118,7 +119,7 @@ class Arciv(_ArcivSpecialEncodable):
     TOCList: List[TocItem]
 
     @classmethod
-    def from_parser(cls, d:Dict[str,Any]):
+    def from_parser(cls, d:Dict[str,Any]) -> Arciv:
         """Converts a parser result to a formatted """
         
         root_dict = d["Archive"]
