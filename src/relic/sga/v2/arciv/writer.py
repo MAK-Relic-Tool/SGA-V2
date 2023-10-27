@@ -37,9 +37,9 @@ class ArcivWriter:
         self._indent_level = 0
 
     @contextmanager
-    def _enter_indent(self):
+    def _enter_indent(self) -> None:
         self._indent_level += 1
-        yield
+        yield None
         self._indent_level -= 1
 
     def _formatted(
@@ -92,13 +92,13 @@ class ArcivWriter:
 
     def _format_path(
         self,
-        value: PathLike[str],
+        value: Union[str,PathLike[str]],
         *,
         in_collection: bool = False,
         in_assignment: bool = False,
     ) -> Iterable[str]:
         yield from self._formatted(
-            f"[[{value.__fspath__()}]]",
+            f"[[{value if not hasattr(value,'__fspath__') else value.__fspath__()}]]",
             comma=in_collection,
             newline=in_assignment,
             no_indent=in_assignment,
