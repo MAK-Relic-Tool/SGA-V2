@@ -414,9 +414,9 @@ GAME_FORMAT_TOC_FILE_DATA = {
 class SgaTocV2(SgaToc):
     @classmethod
     def _determine_next_header_block_ptr(
-        cls, header: SgaTocHeaderV2, index: int = -1
+        cls, header: SgaTocHeaderV2, toc_end:int,  index: int = -1,
     ) -> int:
-        smallest = header.seek(0, os.SEEK_END)
+        smallest = toc_end
         ptrs = [
             header.folder.offset,
             header.drive.offset,
@@ -429,7 +429,7 @@ class SgaTocV2(SgaToc):
         return smallest
 
     @classmethod
-    def _determine_game(cls, header: SgaTocHeaderV2):
+    def _determine_game(cls, header: SgaTocHeaderV2, toc_end:int):
         # Unfortunately DoW and IC (Steam) have a slightly different file layout
         # DoW is 20 and IC is 17
         # We can determine which via comparing the size of the full block
@@ -440,7 +440,7 @@ class SgaTocV2(SgaToc):
                 f"Game format could not be determined; no files in file block."
             )
 
-        file_block_end = cls._determine_next_header_block_ptr(header, file_block_start)
+        file_block_end = cls._determine_next_header_block_ptr(header, toc_end, index=file_block_start)
         file_block_size = file_block_end - file_block_start
         file_def_size = file_block_size / file_count
 
@@ -465,7 +465,10 @@ class SgaTocV2(SgaToc):
             parent, *self._header.folder.info, cls=SgaTocFolderV2
         )
         if game is None:
-            game = self._determine_game(self._header)
+            now = parent.tell()
+            end = parent.seek(0,os.SEEK_END)
+            parent.seek(now)
+            game = self._determine_game(self._header, end)
         self._game_format = game
 
         self._files = SgaTocInfoArea(

@@ -13,7 +13,8 @@ from relic.core.cli import cli_root
 
 
 _DATASETS = [
-    get_dataset_path("sample-10-26-2023")
+    get_dataset_path("sample-10-26-2023"),
+    get_dataset_path("sample-10-28-2023")
 ]
 
 @pytest.mark.parametrize(
@@ -94,9 +95,12 @@ class TestCLI:
         Tests that the CLI Pack function runs without error
         """
         tmp_fs: FS
+        MAN_FILE = "file_manifest.json"
         with create_temp_dataset_fs(dataset) as tmp_fs:
             with tmp_fs.opendir("Meta") as meta_dir:
-                files = json.loads(meta_dir.gettext("file_manifest.json"))
+                if not meta_dir.exists(MAN_FILE):
+                    pytest.skip(f"'{MAN_FILE}' was not found; skipping validation")
+                files = json.loads(meta_dir.gettext(MAN_FILE))
 
             for arciv in tmp_fs.glob("**/*.arciv"):
                 _, packed_sys_path = self._pack(tmp_fs,arciv)
@@ -116,9 +120,12 @@ class TestCLI:
         Tests that the CLI Unpack properly extracts all files in the SGA
         """
         tmp_fs: FS
+        MAN_FILE = "file_manifest.json"
         with create_temp_dataset_fs(dataset) as tmp_fs:
             with tmp_fs.opendir("Meta") as meta_dir:
-                files = json.loads(meta_dir.gettext("file_manifest.json"))
+                if not meta_dir.exists(MAN_FILE):
+                    pytest.skip(f"'{MAN_FILE}' was not found; skipping validation")
+                files = json.loads(meta_dir.gettext(MAN_FILE))
 
             for sga in tmp_fs.glob("**/*.sga"):
                 dump_path, _ = self._unpack(tmp_fs,sga)

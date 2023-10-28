@@ -978,18 +978,20 @@ class _V2TocDisassembler:
         self._file_count = 0
         self._drive_count = 0
 
-    def write_name(self, name: str = SgaPathResolver.ROOT) -> int:
+    def _write_name_to_table(self, table:Dict[str,int], name:str) -> int:
         name = SgaPathResolver.fix_seperator(name)
         _, name = SgaPathResolver.parse(name)
         name = SgaPathResolver.strip_root(name)
-        index = self.name_table.get(name)
+        index = table.get(name)
 
         if index is None:
-            index = self.name_table[name] = self.name_block.tell()
+            index = table[name] = self.name_block.tell()
             enc_name = name.encode("ascii") + b"\0"
             self.name_block.write(enc_name)
 
         return index
+    def write_name(self, name: str = SgaPathResolver.ROOT) -> int:
+        return self._write_name_to_table(self.name_table,name)
 
     def write_data(
         self,
@@ -1364,9 +1366,27 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         self.filesystem = filesystem
         self.arciv = arciv
         self._root = filesystem_root
+        self.name_tables = {}
+        self.name_table = None # to force errors
+
+    @property
+    def name_count(self) -> int:
+        return sum(len(v) for v in self.name_tables.values())
+
+    def _get_or_make_name_table(self,drive:TocItem):
+        key = f"{drive.TOCHeader.Name}-{drive.TOCHeader.Alias}"
+        result = self.name_tables.get(key)
+        if result is None:
+            result = self.name_tables[key] = {}
+        return result
+
+
+    def write_name_in_drive(self, drive:TocItem, name: str = SgaPathResolver.ROOT) -> int:
+        name_table = self._get_or_make_name_table(drive)
+        return self._write_name_to_table(name_table,name.lower())
 
     def write_name(self, name: str = SgaPathResolver.ROOT) -> int:
-        return super().write_name(name.lower())
+        raise RelicToolError(f"{ArcivV2TocDisassembler.__name__} should use '{self.write_name_in_drive.__name__}'!")
 
     def _get_fspath(self, path:str, fs_info:Optional[Tuple[FS,str]]):
         SEPS = [("\\",r"/"), (r"/","\\")] # pyfilesystem is such a whiny bitch when it comes to path seperators for osfs; ill eat these words if python doesn't actually handle the inverse seperator; but GDamn, its annoying
@@ -1400,7 +1420,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
     ) -> list[Tuple[int, TocFileItem]]:
         # Fills the folder buffer with temp folders
         sorted_results = {}
-        for file in sorted(folder.Files, key=lambda x:x.File):
+        for file in sorted(folder.Files, key=lambda x:x.File.lower()):
             file_wb = self.write_file()
             sorted_results[id(file)] = file_wb
 
@@ -1411,35 +1431,34 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
 
         return results
 
-    def write_arciv_file_names(self, folder:TocFolderItem):
-        for file in sorted(folder.Files, key=lambda x:x.File):
-            self.write_name(file.File)
+    def write_arciv_file_names(self, folder:TocFolderItem, drive:TocItem):
+        for file in sorted(folder.Files, key=lambda x:x.File.lower()):
+            self.write_name_in_drive(drive, file.File)
 
         for folder in folder.Folders:
-            self.write_arciv_file_names(folder)
+            self.write_arciv_file_names(folder,drive)
 
-    def write_arciv_folder_names(self, folder:TocFolderItem, path:str = None):
+    def write_arciv_folder_names(self, folder:TocFolderItem, drive:TocItem, path:str = None):
         name = folder.FolderInfo.folder
         parent_full_path = (
             SgaPathResolver.join(path, name) if path is not None else name
         )
-        self.write_name(parent_full_path)
+        self.write_name_in_drive(drive, parent_full_path)
 
-        for sub_folder in folder.Folders:
+        for sub_folder in sorted(folder.Folders, key=lambda x:x.FolderInfo.folder.lower()):
             full_subfolder_path = SgaPathResolver.join(parent_full_path, sub_folder.FolderInfo.folder)
-            self.write_name(full_subfolder_path)
+            self.write_name_in_drive(drive, full_subfolder_path)
 
         for sub_folder in folder.Folders:
-            self.write_arciv_folder_names(sub_folder, parent_full_path)
+            self.write_arciv_folder_names(sub_folder, drive, parent_full_path)
 
-        _ = None
 
 
     def write_arciv_names(self):
         for toc_item in self.arciv.TOCList:
-            self.write_arciv_folder_names(toc_item.RootFolder)
+            self.write_arciv_folder_names(toc_item.RootFolder,toc_item)
         for toc_item in self.arciv.TOCList:
-            self.write_arciv_file_names(toc_item.RootFolder)
+            self.write_arciv_file_names(toc_item.RootFolder,toc_item)
 
     def _get_fs_info(self, path:str, namespaces:List[str], fs_info:Optional[Tuple[FS,str]] = None):
 
@@ -1466,7 +1485,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             self, file: TocFileItem, drive:TocItem, write_back: Optional[int] = None, fs_info:Optional[Tuple[FS,str]] = None
     ) -> None:
 
-        name = file.File
+        name = file.File.lower()
         fs_path = self._get_fspath(file.Path,fs_info)
 
         filesystem = fs_info[0] if fs_info is not None else self.filesystem
@@ -1480,7 +1499,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             storage_type = SgaFsV2Assembler.resolve_storage_type(drive.TOCHeader.Storage,file.Path,size)
         else:
             storage_type = file.Store
-        name_offset = self.write_name(name)
+        name_offset = self.write_name_in_drive(drive,name)
 
 
         with filesystem.openbin(fs_path,"r") as h:
@@ -1509,11 +1528,13 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             path: Optional[str] = None,
             write_back: Optional[int] = None,
             fs_info: Optional[Tuple[FS,str]] = None,
+            *,
+            root_folder:bool=False
     ) -> None:
         name = folder.FolderInfo.folder
         full_path = SgaPathResolver.join(path, name) if path is not None else name
         # index = self.folder_count
-        name_offset = self.write_name(full_path)
+        name_offset = self.write_name_in_drive(drive,full_path)
         if write_back is None:
             write_back = self.write_folder()
 
@@ -1521,18 +1542,18 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         sub_folders = self.write_arciv_sub_folders(folder)
         folder_end = self.folder_count
 
-        for wb, sub_folder in sub_folders:
-            self.write_arciv_folder(sub_folder, drive=drive, path=full_path, write_back=wb, fs_info=fs_info)
-
         file_start = self.file_count
         sub_files = self.write_arciv_sub_files(folder)
         file_end = self.file_count
 
+        for wb, sub_folder in sub_folders:
+            self.write_arciv_folder(sub_folder, drive=drive, path=full_path, write_back=wb, fs_info=fs_info)
+
         for wb, sub_file in sub_files:
             self.write_arciv_file(sub_file, drive=drive, write_back=wb, fs_info=fs_info)
         #
-        if file_start == file_end:
-            file_start = file_end = 0
+        # if file_start == file_end:
+        #     file_start = file_end = 0
 
         self.write_folder(
             name_offset=name_offset,
@@ -1553,7 +1574,8 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
 
         folder_root_wb = self.write_folder()
 
-        self.write_arciv_folder(drive.RootFolder, write_back=folder_root_wb, drive = drive, fs_info=fs_info)
+        self.write_arciv_folder(drive.RootFolder, write_back=folder_root_wb, drive = drive, fs_info=fs_info, root_folder=True)
+
 
         folder_end = self.folder_count
         file_end = self.file_count
@@ -1866,7 +1888,7 @@ class PackingSettings:
     ...
 
 class SgaFsV2Assembler:
-    DEFAULT_STORAGE_TYPE = StorageType.BUFFER_COMPRESS #
+    DEFAULT_STORAGE_TYPE = StorageType.STREAM_COMPRESS #
 
     @classmethod
     def resolve_storage_type(cls, resolvers:List[TocStorage], path:str, size:int, default_storage_type:StorageType=DEFAULT_STORAGE_TYPE):

@@ -1,0 +1,259 @@
+Archive =  
+{
+	ArchiveHeader =  
+	{
+		ArchiveName = "example-10-26-2023",
+	},
+	TOCList =  
+	{
+		 
+		{
+			RootFolder =  
+			{
+				Files =  
+				{
+				},
+				FolderInfo =  
+				{
+					folder = "",
+					path = [[<cwd>\Root\Data\]],
+				},
+				Folders =  
+				{
+					 
+					{
+						Files =  
+						{
+						},
+						FolderInfo =  
+						{
+							folder = "Samples",
+							path = [[<cwd>\Root\Data\Samples\]],
+						},
+						Folders =  
+						{
+							 
+							{
+								Files =  
+								{
+									 
+									{
+										File = "Smiley.bmp",
+										Path = [[<cwd>\Root\Data\Samples\Sample Images\Smiley.bmp]],
+										Size = 824,
+										Store = -1,
+									},
+									 
+									{
+										File = "Smiley.jpg",
+										Path = [[<cwd>\Root\Data\Samples\Sample Images\Smiley.jpg]],
+										Size = 11416,
+										Store = -1,
+									},
+									 
+									{
+										File = "Smiley.png",
+										Path = [[<cwd>\Root\Data\Samples\Sample Images\Smiley.png]],
+										Size = 2884,
+										Store = -1,
+									},
+									 
+									{
+										File = "Smiley.tga",
+										Path = [[<cwd>\Root\Data\Samples\Sample Images\Smiley.tga]],
+										Size = 812,
+										Store = -1,
+									},
+									 
+									{
+										File = "Smiley.tif",
+										Path = [[<cwd>\Root\Data\Samples\Sample Images\Smiley.tif]],
+										Size = 21204,
+										Store = -1,
+									},
+								},
+								FolderInfo =  
+								{
+									folder = "Sample Images",
+									path = [[<cwd>\Root\Data\Samples\Sample Images\]],
+								},
+								Folders =  
+								{
+								},
+							},
+							 
+							{
+								Files =  
+								{
+									 
+									{
+										File = "auto.txt",
+										Path = [[<cwd>\Root\Data\Samples\Sample Strings\auto.txt]],
+										Size = 103,
+										Store = -1,
+									},
+									 
+									{
+										File = "buffer.txt",
+										Path = [[<cwd>\Root\Data\Samples\Sample Strings\buffer.txt]],
+										Size = 68,
+										Store = -1,
+									},
+									 
+									{
+										File = "notincluded.txt",
+										Path = [[<cwd>\Root\Data\Samples\Sample Strings\notincluded.txt]],
+										Size = 50,
+										Store = -1,
+									},
+									 
+									{
+										File = "store.txt",
+										Path = [[<cwd>\Root\Data\Samples\Sample Strings\store.txt]],
+										Size = 56,
+										Store = -1,
+									},
+									 
+									{
+										File = "stream.txt",
+										Path = [[<cwd>\Root\Data\Samples\Sample Strings\stream.txt]],
+										Size = 68,
+										Store = -1,
+									},
+									 
+									{
+										File = "default.txt",
+										Path = [[<cwd>\Root\Data\Samples\Sample Strings\default.txt]],
+										Size = 156,
+										Store = -1,
+									},
+								},
+								FolderInfo =  
+								{
+									folder = "Sample Strings",
+									path = [[<cwd>\Root\Data\Samples\Sample Strings\]],
+								},
+								Folders =  
+								{
+								},
+							},
+						},
+					},
+				},
+			},
+			TOCHeader =  
+			{
+				Alias = "data",
+				Name = "testdata",
+				RootPath = [[<cwd>\Root\Data\]],
+				Storage =  
+				{
+					 
+					{
+						MaxSize = -1,
+						MinSize = -1,
+						Storage = 0,
+						Wildcard = "*.*",
+					},
+				},
+			},
+		},
+		 
+		{
+			RootFolder =  
+			{
+				Files =  
+				{
+				},
+				FolderInfo =  
+				{
+					folder = "",
+					path = [[<cwd>\Root\Attrib\]],
+				},
+				Folders =  
+				{
+					 
+					{
+						Files =  
+						{
+							 
+							{
+								File = "also lorem ipsum.txt",
+								Path = [[<cwd>\Root\Attrib\MyAttrib\also lorem ipsum.txt]],
+								Size = 5325,
+								Store = -1,
+							},
+							 
+							{
+								File = "LoremIpsum.txt",
+								Path = [[<cwd>\Root\Attrib\MyAttrib\LoremIpsum.txt]],
+								Size = 4157,
+								Store = -1,
+							},
+							 
+							{
+								File = "more ipsum.txt",
+								Path = [[<cwd>\Root\Attrib\MyAttrib\more ipsum.txt]],
+								Size = 1031,
+								Store = -1,
+							},
+						},
+						FolderInfo =  
+						{
+							folder = "MyAttrib",
+							path = [[<cwd>\Root\Attrib\MyAttrib\]],
+						},
+						Folders =  
+						{
+						},
+					},
+				},
+			},
+			TOCHeader =  
+			{
+				Alias = "attrib",
+				Name = "testattrib",
+				RootPath = [[<cwd>\Root\Attrib\]],
+				Storage =  
+				{
+					 
+					{
+						MaxSize = 100,
+						MinSize = -1,
+						Storage = 0,
+						Wildcard = "*.*",
+					},
+					 
+					{
+						MaxSize = -1,
+						MinSize = -1,
+						Storage = 0,
+						Wildcard = "*.mp3",
+					},
+					 
+					{
+						MaxSize = -1,
+						MinSize = -1,
+						Storage = 0,
+						Wildcard = "*.wav",
+					},
+					 
+					{
+						MaxSize = -1,
+						MinSize = -1,
+						Storage = 0,
+						Wildcard = "*.jpg",
+					},
+					 
+					{
+						MaxSize = -1,
+						MinSize = -1,
+						Storage = 2,
+						Wildcard = "*.lua",
+					},
+				},
+			},
+		},
+	},
+}
+
