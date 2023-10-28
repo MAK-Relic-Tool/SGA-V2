@@ -517,7 +517,7 @@ class SgaFileV2(SgaFile):
         self, cached: bool, error: bool, hasher: md5, expected: bytes, cache_name: str
     ) -> bool:
         if (
-            "r" not in self._parent.mode
+            self._parent.writable()
             or error  # we can't use the cache if we want to error
             or not cached
             or not hasattr(self, cache_name)
