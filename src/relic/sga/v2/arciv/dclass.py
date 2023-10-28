@@ -66,7 +66,7 @@ class TocFolderItem:
 @dataclass
 class TocStorage(_ArcivSpecialEncodable):
     MinSize: int
-    MazxSize: int
+    MaxSize: int
     Storage: Optional[StorageType]
     Wildcard: str
 
@@ -108,7 +108,7 @@ class TocItem:
 
     @classmethod
     def from_parser(cls, d:Dict[str,Any]) -> TocItem:
-        toc_header = TocHeader(**d["TOCHeader"])
+        toc_header = TocHeader.from_parser(d["TOCHeader"])
         root_folder = TocFolderItem.from_parser(d["RootFolder"])
         return cls(TOCHeader=toc_header,RootFolder=root_folder)
 

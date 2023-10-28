@@ -18,7 +18,7 @@ def get_dataset_path(*parts:str) -> str:
 def create_temp_dataset_fs(path:str, identifier:Optional[str]=None) -> Generator[FS,None,None]:
     with open_fs(f"temp://{identifier or ''}") as tmp:
         # Copy files into tmp filesytem
-        copy_fs(path,tmp)
+        copy_fs(path,tmp, preserve_time=True)
 
         # Fix arciv absolute paths
         for match in tmp.glob("**/*.arciv"):

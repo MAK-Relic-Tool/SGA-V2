@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any, BinaryIO
 
 import fs
 from relic.core.cli import CliPlugin, _SubParsersAction
+from relic.core.errors import RelicToolError
 from relic.sga.core.cli import _get_dir_type_validator, _get_file_type_validator
 from relic.sga.core.definitions import StorageType
 
@@ -69,10 +70,28 @@ class RelicSgaPackV2Cli(CliPlugin):
 
         manifest_is_json = splitext(manifest_path)[1].lower()  == ".json"
 
+        def _check_parts(_path:str) -> bool:
+            d, f = os.path.split(_path)
+
+            if os.path.exists(d) :
+                return not os.path.isfile(d)
+            return _check_parts(d)
+
+
         if out_path is None:
             out_path = os.path.dirname(manifest_path)
-        elif os.path.isfile(out_path):
+        elif os.path.exists(out_path):
+            if os.path.isdir(out_path):
+                ...
+                # Do nothing to out path
+            else:
+                out_path, file_name = os.path.split(out_path)
+        elif not _check_parts(out_path):
+            raise RelicToolError(f"'{out_path}' is not a valid path; it treats a file as a directory!")
+        else:
             out_path, file_name = os.path.split(out_path)
+
+
 
 
         # Execute Command
@@ -94,14 +113,9 @@ class RelicSgaPackV2Cli(CliPlugin):
         os.makedirs(out_path,exist_ok=True)
         # Create full path
         full_out_path = os.path.join(out_path, file_name)
-        # Create 'SGA'
-        print(f"\tAssembling SGA Archive`{manifest_path}`")
-        sga = SgaFsV2Packer.assemble(manifest)
-        print(f"\t\tAssembled")
-
         print(f"\tPacking SGA `{full_out_path}`")
         with open(full_out_path,"wb") as out_handle:
-            sga.save(out_handle, safe_write=True)
+            sga = SgaFsV2Packer.pack(manifest,out_handle,safe_mode=True)
         print(f"\t\tPacked")
         print("\tDone!")
         return None
