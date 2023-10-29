@@ -8,7 +8,7 @@ import fs
 import pytest
 from fs.info import Info
 from fs.walk import Step
-from relic.sga.core.lazyio import read_chunks
+from relic.core.lazyio import read_chunks
 
 from relic.sga.v2.serialization import SgaV2GameFormat
 from relic.sga.v2.sgafs import SgaFsV2

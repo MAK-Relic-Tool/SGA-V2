@@ -3,7 +3,7 @@ from __future__ import annotations
 import os
 import time
 import zlib
-from abc import ABCMeta, abstractmethod
+from abc import abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
@@ -30,18 +30,15 @@ from fs.info import Info
 from fs.mode import Mode
 from fs.subfs import SubFS
 from relic.core.errors import RelicToolError
-from relic.sga.core import MagicWord
-from relic.sga.core.definitions import MagicWord
-from relic.sga.core.definitions import StorageType
+from relic.core.lazyio import BinaryWindow, read_chunks, chunk_copy, BinaryWrapper
+from relic.sga.core.definitions import MagicWord, StorageType
 from relic.sga.core.hashtools import crc32, md5
-from relic.sga.core.lazyio import BinaryWindow, read_chunks, chunk_copy, BinaryWrapper
 from relic.sga.core.serialization import (
     SgaNameWindow,
     SgaTocFolder,
     SgaTocDrive,
 )
 
-from relic.sga.v2 import version
 from relic.sga.v2.arciv.dclass import Arciv, TocFolderItem, TocHeader, TocStorage, TocFileItem, TocItem
 from relic.sga.v2.definitions import version
 from relic.sga.v2.serialization import (
@@ -1010,7 +1007,8 @@ class _V2TocDisassembler:
         handle.write(buffer)
 
         # Write Header
-        data_header = SgaTocFileDataHeaderV2Dow(handle, window_start, window_size)
+        _header_window = BinaryWindow(handle, window_start, window_size)
+        data_header = SgaTocFileDataHeaderV2Dow(_header_window)
         data_header.name = name
         if isinstance(modified,datetime):
             modified = RelicDateTimeSerializer.datetime2unix(modified)
@@ -1742,7 +1740,7 @@ class _SgaV2Serializer:
             if name is not None:
                 meta_block.name = name
             if header_md5 is not None:
-                meta_block.header_md5 = header_md5
+                meta_block.toc_md5 = header_md5
             if data_pos is not None:
                 meta_block.data_pos = data_pos
             if header_size is not None:
@@ -2055,7 +2053,7 @@ class SgaFsV2(FS):
             self._load_lazy(self._lazy_file)
 
             self._file_md5 = self._lazy_file.meta.file_md5
-            self._header_md5 = self._lazy_file.meta.header_md5
+            self._header_md5 = self._lazy_file.meta.toc_md5
             self._game_format = self._lazy_file.table_of_contents.game_format
 
             if in_memory is True:

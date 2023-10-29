@@ -5,20 +5,14 @@ Binary Serializers for Relic's SGA-V2
 from __future__ import annotations
 
 import os
-import time
 from datetime import datetime, timezone
 from enum import Enum
 from typing import BinaryIO, Optional, Union, Literal, Tuple, Any
 
 from relic.core.errors import RelicToolError
+from relic.core.lazyio import BinaryWindow, ZLibFileReader, tell_end, BinaryProxySerializer
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.hashtools import md5
-from relic.sga.core.lazyio import (
-    BinaryWindow,
-    LazyBinary,
-    tell_end,
-    ZLibFileReader,
-)
 from relic.sga.core.serialization import (
     SgaHeader,
     SgaTocHeader,
@@ -102,38 +96,37 @@ class SgaHeaderV2(SgaHeader):
     _DATA_POS = (_next(*_TOC_SIZE), 4)
     _SIZE = _next(*_DATA_POS)
     _TOC_POS = 180
+    _NAME_ENC = "utf-16-le"
+    _NAME_PAD = "\0"
+    _INT_FMT = {"byteorder":"little","signed":False}
 
     @property
     def file_md5(
         self,
     ) -> bytes:  # I marked this as a 'to do' but what did i need to 'to do'?
-        return self._read_bytes(*self._FILE_MD5)
+        return self._serializer.read_bytes(*self._FILE_MD5)
 
     @file_md5.setter
     def file_md5(self, value: bytes):
-        self._write_bytes(value, *self._FILE_MD5)
+        self._serializer.write_bytes(value, *self._FILE_MD5)
 
     @property
     def name(self) -> str:
-        buffer = self._read_bytes(*self._NAME)
-        terminated_str = self._unpack_str(buffer, "utf-16-le")
-        result = terminated_str.rstrip("\0")
-        return result
+        return self._serializer.c_string.read(*self._NAME,encoding=self._NAME_ENC,padding=self._NAME_PAD)
 
     @name.setter
     def name(self, value: str):
-        buffer = self._pack_str(value, "utf-16-le", self._NAME[1], "\0")
-        self._write_bytes(buffer, *self._NAME)
+        self._serializer.c_string.write(value,*self._NAME,encoding=self._NAME_ENC,padding=self._NAME_PAD)
 
     @property
-    def header_md5(
+    def toc_md5(
         self,
     ) -> bytes:  # I marked this as a 'to do' but what did i need to 'to do'?
-        return self._read_bytes(*self._TOC_MD5)
+        return self._serializer.read_bytes(*self._TOC_MD5)
 
-    @header_md5.setter
-    def header_md5(self, value: bytes):
-        self._write_bytes(value, *self._TOC_MD5)
+    @toc_md5.setter
+    def toc_md5(self, value: bytes):
+        self._serializer.write_bytes(value, *self._TOC_MD5)
 
     @property
     def toc_pos(self) -> int:
@@ -151,23 +144,19 @@ class SgaHeaderV2(SgaHeader):
 
     @property
     def toc_size(self) -> int:
-        buffer = self._read_bytes(*self._TOC_SIZE)
-        return self._unpack_int(buffer)
+        return self._serializer.uint32.read(*self._TOC_SIZE,**self._INT_FMT)
 
     @toc_size.setter
     def toc_size(self, value: int):
-        buffer = self._pack_int(value, self._TOC_SIZE[1])
-        self._write_bytes(buffer, *self._TOC_SIZE)
+        self._serializer.uint32.write(value,*self._TOC_SIZE,**self._INT_FMT)
 
     @property
     def data_pos(self) -> int:
-        buffer = self._read_bytes(*self._DATA_POS)
-        return self._unpack_int(buffer)
+        return self._serializer.uint32.read(*self._DATA_POS,**self._INT_FMT)
 
     @data_pos.setter
     def data_pos(self, value: int):
-        buffer = self._pack_int(value, self._DATA_POS[1])
-        self._write_bytes(buffer, *self._DATA_POS)
+        self._serializer.uint32.write(value,*self._DATA_POS,**self._INT_FMT)
 
     @property
     def data_size(self) -> None:
@@ -224,7 +213,7 @@ class SgaTocFolderV2(SgaTocFolder):
     _SIZE = _next(*_LAST_FILE)
 
 
-class _SgaTocFileV2(SgaTocFile, LazyBinary):
+class _SgaTocFileV2(SgaTocFile, BinaryProxySerializer):
     _NAME_OFFSET: Tuple[int, int] = None
     _FLAGS: Tuple[int, int] = None
     _DATA_OFFSET: Tuple[int, int] = None
@@ -233,57 +222,49 @@ class _SgaTocFileV2(SgaTocFile, LazyBinary):
     _SIZE: int = None
     _STORAGE_TYPE_MASK: int = 0xF0  # 00, 10, 20
     _STORAGE_TYPE_SHIFT: int = 4
+    _INT_FORMAT = {"byteorder":"little","signed":False}
 
     def __init__(self, parent: BinaryIO):
         super().__init__(parent)
 
     @property
     def name_offset(self):  # name_rel_pos
-        buffer = self._read_bytes(*self._NAME_OFFSET)
-        return self._unpack_int(buffer)
+        return self._serializer.int.read(*self._NAME_OFFSET,**self._INT_FORMAT)
 
     @name_offset.setter
     def name_offset(self, value: int):
-        buffer = self._pack_int(value, self._NAME_OFFSET[1])
-        _ = self._write_bytes(buffer, *self._NAME_OFFSET)
+        self._serializer.int.write(value,*self._NAME_OFFSET,**self._INT_FORMAT)
 
     @property
     def data_offset(self):  # data_rel_pos
-        buffer = self._read_bytes(*self._DATA_OFFSET)
-        return self._unpack_int(buffer)
+        return self._serializer.int.read(*self._DATA_OFFSET,**self._INT_FORMAT)
 
     @data_offset.setter
     def data_offset(self, value: int):
-        buffer = self._pack_int(value, self._DATA_OFFSET[1])
-        _ = self._write_bytes(buffer, *self._DATA_OFFSET)
+        self._serializer.int.write(value,*self._DATA_OFFSET,**self._INT_FORMAT)
 
     @property
     def compressed_size(self):  # length_in_archive
-        buffer = self._read_bytes(*self._COMP_SIZE)
-        return self._unpack_int(buffer)
+        return self._serializer.int.read(*self._COMP_SIZE,**self._INT_FORMAT)
 
     @compressed_size.setter
     def compressed_size(self, value: int):
-        buffer = self._pack_int(value, self._COMP_SIZE[1])
-        _ = self._write_bytes(buffer, *self._COMP_SIZE)
+        self._serializer.int.write(value,*self._COMP_SIZE,**self._INT_FORMAT)
 
     @property
     def decompressed_size(self):  # length_on_disk
-        buffer = self._read_bytes(*self._DECOMP_SIZE)
-        return self._unpack_int(buffer)
+        return self._serializer.int.read(*self._DECOMP_SIZE,**self._INT_FORMAT)
 
     @decompressed_size.setter
     def decompressed_size(self, value: int):
-        buffer = self._pack_int(value, self._DECOMP_SIZE[1])
-        _ = self._write_bytes(buffer, *self._DECOMP_SIZE)
+        self._serializer.int.write(value,*self._DECOMP_SIZE,**self._INT_FORMAT)
 
     @property
     def storage_type(self) -> StorageType:
         """
         The Storage Type that the
         """
-        buffer = self._read_bytes(*self._FLAGS)
-        value = self._unpack_int(buffer)
+        value = self._serializer.int.read(*self._FLAGS,**self._INT_FORMAT)
         value &= self._STORAGE_TYPE_MASK
         value >>= self._STORAGE_TYPE_SHIFT
         return StorageType(value)
@@ -291,13 +272,11 @@ class _SgaTocFileV2(SgaTocFile, LazyBinary):
     @storage_type.setter
     def storage_type(self, value: StorageType):
         # assuming this IS IN FACT, a flag value, we need to read it to edit it
-        rbuffer = self._read_bytes(*self._FLAGS)
         flag = value << self._STORAGE_TYPE_SHIFT
-        value = self._unpack_int(rbuffer)  # convert to int-packed flags
-        value &= ~self._STORAGE_TYPE_MASK  # clear storage flag
-        value |= flag  # apply storage flag
-        wbuffer = self._pack_int(value, self._FLAGS[1])
-        _ = self._write_bytes(wbuffer, *self._FLAGS)
+        buffer_value = self._serializer.int.read(*self._FLAGS,**self._INT_FORMAT)
+        buffer_value &= ~self._STORAGE_TYPE_MASK  # clear storage flag
+        buffer_value |= flag  # apply storage flag
+        self._serializer.int.write(buffer_value,*self._FLAGS,**self._INT_FORMAT)
 
 
 class SgaTocFileV2Dow(_SgaTocFileV2):
@@ -309,25 +288,22 @@ class SgaTocFileV2Dow(_SgaTocFileV2):
     _SIZE = _next(*_DECOMP_SIZE)
 
 
-class SgaTocFileDataHeaderV2Dow(BinaryWindow, LazyBinary):
+class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
     _NAME_OFFSET = (0, 256)
-    _NAME_ENC = "ascii"
-    _NAME_PADDING = "\0"
     _MODIFIED_OFFSET = (_next(*_NAME_OFFSET), 4)
     _CRC_OFFSET = (_next(*_MODIFIED_OFFSET), 4)
     _SIZE = _next(*_CRC_OFFSET)
+    _NAME_ENC = "ascii"
+    _NAME_PADDING = "\0"
+    _INT_FORMAT = {"byteorder":"little","signed":False}
 
     @property
     def name(self) -> str:
-        buffer = self._read_bytes(*self._NAME_OFFSET)
-        value = self._unpack_str(buffer, self._NAME_ENC, strip=self._NAME_PADDING)
-        return value
+        return self._serializer.c_string.read(*self._NAME_OFFSET,encoding=self._NAME_ENC,padding=self._NAME_PADDING)
 
     @name.setter
     def name(self, value: str):
-        size = self._NAME_OFFSET[1]
-        buffer = self._pack_str(value, self._NAME_ENC, size, padding=self._NAME_PADDING)
-        _ = self._write_bytes(buffer, *self._NAME_OFFSET)
+        self._serializer.c_string.write(value,*self._NAME_OFFSET,encoding=self._NAME_ENC,padding=self._NAME_PADDING)
 
     @property
     def modified(self) -> int:
@@ -335,24 +311,21 @@ class SgaTocFileDataHeaderV2Dow(BinaryWindow, LazyBinary):
         The time (from the unix epoch) when this file was modified.
         Measured to the second, fractions of a second are truncated.
         """
-        buffer = self._read_bytes(*self._MODIFIED_OFFSET)
+        buffer = self._serializer.read_bytes(*self._MODIFIED_OFFSET)
         return RelicUnixTimeSerializer.unpack(buffer)
 
     @modified.setter
     def modified(self, value: Union[float, int]):
         buffer = RelicUnixTimeSerializer.pack(value)
-        _ = self._write_bytes(buffer, *self._MODIFIED_OFFSET)
+        _ = self._serializer.write_bytes(buffer, *self._MODIFIED_OFFSET)
 
     @property
     def crc32(self) -> int:
-        buffer = self._read_bytes(*self._CRC_OFFSET)
-        return self._unpack_int(buffer)
+        return self._serializer.int.read(*self._CRC_OFFSET,**self._INT_FORMAT)
 
     @crc32.setter
     def crc32(self, value: int):
-        size = self._CRC_OFFSET[1]
-        buffer = self._pack_int(value, size)
-        _ = self._write_bytes(buffer, *self._CRC_OFFSET)
+        self._serializer.int.write(value,*self._CRC_OFFSET,**self._INT_FORMAT)
 
 
 class SgaTocFileDataV2Dow:
@@ -368,7 +341,8 @@ class SgaTocFileDataV2Dow:
 
         size = SgaTocFileDataHeaderV2Dow._SIZE
         offset = self._toc_file.data_offset - size
-        self._data_header = SgaTocFileDataHeaderV2Dow(self._data_window, offset, size)
+        _data_header_window = BinaryWindow(self._data_window, offset, size)
+        self._data_header = SgaTocFileDataHeaderV2Dow(_data_header_window)
 
     @property
     def name(self):
@@ -520,12 +494,12 @@ class SgaFileV2(SgaFile):
         self, cached: bool, error: bool, hasher: md5, expected: bytes, cache_name: str
     ) -> bool:
         if (
-            self._parent.writable()
+            self._serializer.stream.writable()
             or error  # we can't use the cache if we want to error
             or not cached
             or not hasattr(self, cache_name)
         ):
-            args: Tuple[BinaryIO, bytes] = self._parent, expected
+            args: Tuple[BinaryIO, bytes] = self._serializer.stream, expected
             if not error:
                 result = hasher.check(*args)
             else:
@@ -560,7 +534,7 @@ class SgaFileV2(SgaFile):
             cached=cached,
             error=error,
             hasher=hasher,
-            expected=self._meta.header_md5,
+            expected=self._meta.toc_md5,
             cache_name=NAME,
         )
 

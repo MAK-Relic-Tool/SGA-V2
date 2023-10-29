@@ -167,14 +167,14 @@ class TestSgaHeaderV2:
     def test_read_header_md5(self, data: SgaHeaderData, buffer: bytes):
         with BytesIO(buffer) as stream:
             interpreter = SgaHeaderV2(stream)
-            assert interpreter.header_md5 == data.header_md5
+            assert interpreter.toc_md5 == data.header_md5
 
     def test_write_header_md5(self, data: SgaHeaderData, buffer: bytes):
         empty = build_sga_header_empty_buffer()
         with BytesIO(empty) as writer_h:
             writer = SgaHeaderV2(writer_h)
-            writer.header_md5 = data.header_md5
-            assert writer.header_md5 == data.header_md5
+            writer.toc_md5 = data.header_md5
+            assert writer.toc_md5 == data.header_md5
 
     def test_read_header_size(self, data: SgaHeaderData, buffer: bytes):
         with BytesIO(buffer) as stream:
@@ -648,10 +648,10 @@ class TestSgaTocFolderV2:
 
 # SGA TOC FILE = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 def build_sga_toc_file_buffer(name_offset: int, storage_type: StorageType, data_offset: int, comp_size: int, decomp_size: int, *, dow_format: bool = True) -> bytes:
-    _STORAGE_TYPE = {  # Too lazy to do flag shifting properly
+    _STORAGE_TYPE = {  # Too lazy to do flag shifting properly # TODO do this properly; it just bit me, and it will bite me again later
         StorageType.STORE: 0,
-        StorageType.BUFFER_COMPRESS: 16,
-        StorageType.STREAM_COMPRESS: 32,
+        StorageType.BUFFER_COMPRESS: 32,
+        StorageType.STREAM_COMPRESS: 16,
     }
     storage_type_val = _STORAGE_TYPE[storage_type]
 
