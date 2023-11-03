@@ -6,10 +6,10 @@ import fs
 from fs.base import FS
 from fs.glob import GlobMatch
 
-from relic.sga.v2.sgafs import SgaFsV2
+from relic.sga.v2 import EssenceFSV2
 from utils import create_temp_dataset_fs, get_dataset_path
 import pytest
-from relic.core.cli import cli_root
+from relic.core import CLI
 
 
 _DATASETS = [
@@ -27,7 +27,7 @@ class TestCLI:
         sga_name, _ = os.path.splitext(arciv.path)
         packed_path = fs.path.join(packed_name, sga_name + ".sga")
         packed_sys_path = os.path.join(os.path.dirname(sys_path), packed_path[1:])
-        cli_root.run_with("relic", "sga", "pack", "v2", sys_path, packed_sys_path)
+        CLI.run_with("relic", "sga", "pack", "v2", sys_path, packed_sys_path)
         return packed_path, packed_sys_path
 
     def _unpack(self, filesystem:FS, sga:GlobMatch):
@@ -36,7 +36,7 @@ class TestCLI:
         sga_name, _ = os.path.splitext(sga.path)
         dump_path = fs.path.join(sga_name, dump_name)
         dump_sys_path = os.path.join(os.path.dirname(sys_path), dump_path[1:])
-        cli_root.run_with("relic", "sga", "unpack", sys_path, dump_sys_path)
+        CLI.run_with("relic", "sga", "unpack", sys_path, dump_sys_path)
         return dump_path, dump_sys_path
 
 
@@ -54,7 +54,7 @@ class TestCLI:
 
             assert src_info.modified.replace(microsecond=0) == dst_info.modified.replace(microsecond=0)
 
-    def _validate_sgafs_equal_osfs_onedrive(self, osfs:FS,sgafs:SgaFsV2, manifest:List[str]):
+    def _validate_sgafs_equal_osfs_onedrive(self, osfs:FS,sgafs:EssenceFSV2, manifest:List[str]):
         for file in manifest:
             assert sgafs.exists(file)
             assert osfs.exists(file)

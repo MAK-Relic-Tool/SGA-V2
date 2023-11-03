@@ -1224,7 +1224,7 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
     Disassembles a SGA Fs into separate in-memory partial ToC blocks, which can be spliced together to form a coherent ToC block.
     """
 
-    def __init__(self, sga: SgaFsV2, game_format: Optional[SgaV2GameFormat] = None):
+    def __init__(self, sga: EssenceFSV2, game_format: Optional[SgaV2GameFormat] = None):
         super().__init__(game_format or sga._game_format)
         self.filesystem = sga
 
@@ -1761,7 +1761,7 @@ class _SgaV2Serializer:
 
     @classmethod
     def write_magic_version(cls, handle: BinaryIO):
-        MagicWord.write_magic_word(handle)
+        MAGIC_WORD.write_magic_word(handle)
         version.pack(handle)
 
     @classmethod
@@ -1876,7 +1876,7 @@ class _SgaV2Serializer:
 class SgaFsV2Serializer(_SgaV2Serializer):
     def __init__(
         self,
-        sga: SgaFsV2,
+        sga: EssenceFSV2,
         handle: BinaryIO,
         game_format: Optional[SgaV2GameFormat] = None,
         name: Optional[str] = None,
@@ -2015,8 +2015,8 @@ class SgaFsV2Assembler:
             yield from cls.assemble_folder_tree(header, sub_folder, full_path)
 
     @classmethod
-    def assemble(cls, manifest: Arciv) -> Tuple[SgaFsV2, Iterable[str]]:
-        sga = SgaFsV2(
+    def assemble(cls, manifest: Arciv) -> Tuple[EssenceFSV2, Iterable[str]]:
+        sga = EssenceFSV2(
             game=SgaV2GameFormat.DawnOfWar, name=manifest.ArchiveHeader.ArchiveName
         )  # TODO does IC support modding?
         file_list = []
@@ -2054,7 +2054,7 @@ class SgaFsV2Packer:
     @classmethod
     def serialize_sga(
         cls,
-        sga: SgaFsV2,
+        sga: EssenceFSV2,
         handle: BinaryIO,
         name: Optional[str] = None,
         safe_mode: bool = False,
@@ -2076,7 +2076,7 @@ class SgaFsV2Packer:
         serializer.write()
 
     @classmethod
-    def assemble(cls, manifest) -> tuple[SgaFsV2, Iterable[str]]:
+    def assemble(cls, manifest) -> tuple[EssenceFSV2, Iterable[str]]:
         return SgaFsV2Assembler.assemble(manifest)
 
     @classmethod
@@ -2091,7 +2091,7 @@ class DriveExistsError(RelicToolError):
     ...
 
 
-class SgaSubFSV2(SubFS):
+class EssenceSubFsV2(SubFS):
     def __init__(self, parent_fs, path):
         super().__init__(parent_fs, SgaPathResolver.ROOT)  # Give parent a dummy value
         self._alias, self._sub_dir = SgaPathResolver.parse(path)
@@ -2102,8 +2102,8 @@ class SgaSubFSV2(SubFS):
         return self._wrap_fs, aliased_path
 
 
-class SgaFsV2(EssenceFS):
-    subfs_class = SgaSubFSV2
+class EssenceFSV2(EssenceFS):
+    subfs_class = EssenceSubFsV2
 
     def __init__(
         self,
@@ -2115,6 +2115,7 @@ class SgaFsV2(EssenceFS):
         name: Optional[str] = None,
         verify_header=False,
         verify_file=False,
+        editable:bool=True,
     ):
         """
         :param handle: The backing IO object to read/write to. If not present, the archive is automatically treated as an empty in-memory archive.
@@ -2130,9 +2131,10 @@ class SgaFsV2(EssenceFS):
         self._file_md5: Optional[bytes] = None
         self._header_md5: Optional[bytes] = None
         self._drives: Dict[str, SgaFsDriveV2] = {}
-        self._lazy_file = None
+        self._lazy_file:Optional[SgaFileV2] = None
         self._game_format: Optional[SgaV2GameFormat] = game
         self._name = name
+        self._update_stream = editable
 
         if parse_handle:
             if handle is None:
@@ -2169,7 +2171,6 @@ class SgaFsV2(EssenceFS):
             drive._unlazy()
             drive._unlazy_children()
 
-        self._lazy_file.close()  # Not neccessary, but doesnt hurt
         self._lazy_file = None
         self._stream.seek(
             0
@@ -2190,7 +2191,7 @@ class SgaFsV2(EssenceFS):
             self._unlazy()  # we can't write to a lazily read file, we load the archive into memory; if its in memory this does nothing
             out = self._stream
 
-        SgaFsV2Packer.serialize(self, out, safe_mode=safe_write)
+        SgaFsV2Packer.serialize_sga(self, out, safe_mode=safe_write)
 
     def getmeta(self, namespace="standard"):  # type: (Text) -> Mapping[Text, object]
         if namespace == NS_ESSENCE:
@@ -2413,7 +2414,7 @@ class SgaFsV2(EssenceFS):
         node = self._getnode(path, exists=True)
         node.setinfo(info)
 
-    def iterate_fs(self) -> Tuple[str, SubFS[SgaFsV2]]:
+    def iterate_fs(self) -> Tuple[str, SubFS[EssenceFSV2]]:
         for alias, _ in self._drives.items():
             yield alias, self.opendir(SgaPathResolver.build(alias=alias))
 
@@ -2422,6 +2423,20 @@ class SgaFsV2(EssenceFS):
         if node.getinfo("basic").is_dir:
             raise fs.errors.FileExists(path)
         return node.verify_crc32(error)
+
+    def close(self):  # type: () -> None
+        if self._handle is not None:
+            self._handle.close()
+        super().close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._update_stream:
+            self.save(safe_write=True)
+        self.close()
+        return super().__exit__(exc_type,exc_val,exc_tb)
 
 
 # class SgaV2Verifier()

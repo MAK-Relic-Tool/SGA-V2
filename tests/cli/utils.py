@@ -1,6 +1,7 @@
+import os
 from contextlib import contextmanager
 from os.path import join, abspath
-from typing import Optional, Generator
+from typing import Optional, Generator, Iterable
 
 from fs import open_fs
 from fs.base import FS
@@ -13,6 +14,8 @@ def get_data_path(*parts:str) -> str:
 
 def get_dataset_path(*parts:str) -> str:
     return get_data_path("dataset",*parts)
+def get_datasets(*parts:str) -> Iterable[str]:
+    return os.listdir(get_data_path())
 
 @contextmanager
 def create_temp_dataset_fs(path:str, identifier:Optional[str]=None) -> Generator[FS,None,None]:

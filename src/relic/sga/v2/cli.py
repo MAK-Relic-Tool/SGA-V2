@@ -11,7 +11,7 @@ from relic.sga.core.cli import _get_file_type_validator
 
 from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
-from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, SgaFsV2
+from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
 from relic.sga.v2.serialization import SgaV2GameFormat
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
@@ -146,7 +146,7 @@ class RelicSgaRepackV2Cli(CliPlugin):
             Path(out_sga).parent.mkdir(parents=True, exist_ok=True)
 
         with open(in_sga, "rb") as sga_h:
-            sgafs = SgaFsV2(sga_h, parse_handle=True, in_memory=True, game=game_format)
+            sgafs = EssenceFSV2(sga_h, parse_handle=True, in_memory=True, game=game_format)
             # Write to binary file:
             if out_sga is not None:
                 print(f"\tWriting `{out_sga}`")
@@ -208,7 +208,7 @@ class RelicSgaV2Legacy2ArcivCli(CliPlugin):
             Path(out_sga).parent.mkdir(parents=True, exist_ok=True)
 
         with open(in_sga, "rb") as sga_h:
-            sgafs = SgaFsV2(sga_h, parse_handle=True, in_memory=True, game=game_format)
+            sgafs = EssenceFSV2(sga_h, parse_handle=True, in_memory=True, game=game_format)
             # Write to binary file:
             if out_sga is not None:
                 print(f"\tWriting `{out_sga}`")

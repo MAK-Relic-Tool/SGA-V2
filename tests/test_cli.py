@@ -24,11 +24,11 @@ class CommandTests:
         assert status == exit_code
 
     def test_run_with(self, args: Sequence[str], output: str, exit_code: int):
-        from relic.core.cli import cli_root
+        from relic.core import CLI
 
         with io.StringIO() as f:
             with redirect_stdout(f):
-                status = cli_root.run_with(*args)
+                status = CLI.run_with(*args)
             f.seek(0)
             result = f.read()
             print(f"'{result}'")  # Visual Aid for Debugging
@@ -83,10 +83,10 @@ def test_cli_unpack_pack_one_to_one(src: str):
     }
 }"""
 
-    from relic.core.cli import cli_root as cli
+    from relic.core import CLI
 
     with tempfile.TemporaryDirectory() as temp_dir:
-        cli.run_with("sga", "unpack", src, temp_dir)
+        CLI.run_with("sga", "unpack", src, temp_dir)
         cfg_file_name = None
         repacked_file_name = None
         try:

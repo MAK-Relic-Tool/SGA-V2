@@ -68,11 +68,11 @@ _ = _ARGS2
 
 @pytest.mark.parametrize(["args", "msg"], [*_ARGS, *_ARGS2])
 def test_argparse_error(args: Iterable[str], msg: str):
-    from relic.core.cli import cli_root
+    from relic.core.cli import CLI
 
     with io.StringIO() as f:
         with redirect_stderr(f):
-            status = cli_root.run_with(*args)
+            status = CLI.run_with(*args)
             assert status == 2
         f.seek(0)
         err = f.read()

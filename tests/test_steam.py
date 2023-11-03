@@ -11,7 +11,7 @@ from fs.walk import Step
 from relic.core.lazyio import read_chunks
 
 from relic.sga.v2.serialization import SgaV2GameFormat
-from relic.sga.v2.essencefs.definitions import SgaFsV2
+from relic.sga.v2.essencefs.definitions import EssenceFSV2
 
 _DOW_DC = "Dawn of War Dark Crusade"
 _DOW_GOLD = "Dawn of War Gold"
@@ -43,7 +43,7 @@ QUICK = True  # skips slower tests like file MD5 checksums and file CRC checks
 
 
 @contextmanager
-def _open_sga(path: str, **kwargs) -> SgaFsV2:
+def _open_sga(path: str, **kwargs) -> EssenceFSV2:
     game_format: SgaV2GameFormat = None
     if "Dawn of War" in path:
         game_format = SgaV2GameFormat.DawnOfWar
@@ -51,7 +51,7 @@ def _open_sga(path: str, **kwargs) -> SgaFsV2:
         game_format = SgaV2GameFormat.ImpossibleCreatures
 
     with open(path, "rb") as h:
-        yield SgaFsV2(h, parse_handle=True, game=game_format, **kwargs)
+        yield EssenceFSV2(h, parse_handle=True, game=game_format, **kwargs)
 
 
 class GameTests:
@@ -88,7 +88,7 @@ class GameTests:
         with BytesIO() as handle:
             with _open_sga(path) as src_sga:
                 src_sga.save(handle)
-                dst_sga = SgaFsV2(handle, parse_handle=True, game=game_format)
+                dst_sga = EssenceFSV2(handle, parse_handle=True, game=game_format)
 
                 for step in src_sga.walk():
                     step:Step

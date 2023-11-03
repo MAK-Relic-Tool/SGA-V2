@@ -5,11 +5,13 @@ from relic.sga.v2.definitions import (
     version,
 )
 
-from relic.sga.v2.essencefs.opener import essence_fs_serializer as EssenceFSHandler
+from relic.sga.v2.essencefs import EssenceFSV2Opener, EssenceFSV2
 
 __version__ = "2.0.0"
 
 __all__ = [
-    "EssenceFSHandler",
+    "EssenceFSV2Opener",
+    "EssenceFSV2",
+
     "version",
 ]
