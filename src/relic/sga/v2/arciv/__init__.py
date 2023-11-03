@@ -1,7 +1,7 @@
 from io import StringIO
 from typing import Union, TextIO, Dict, Any, Optional
 
-from relic.sga.v2.arciv.dclass import Arciv
+from relic.sga.v2.arciv.definitions import Arciv
 from relic.sga.v2.arciv.legacy import load as legacy_load
 from relic.sga.v2.arciv.lexer import build as build_lexer
 from relic.sga.v2.arciv.parser import build as build_parser
@@ -9,12 +9,14 @@ from relic.sga.v2.arciv.writer import ArcivWriter, ArcivWriterSettings, ArcivEnc
 
 
 def parse(f: TextIO, *, legacy_mode: bool = False) -> Arciv:
-    data = load(f,legacy_mode=legacy_mode)
+    data = load(f, legacy_mode=legacy_mode)
     return Arciv.from_parser(data)
 
+
 def parses(f: str, *, legacy_mode: bool = False) -> Arciv:
-    data = loads(f,legacy_mode=legacy_mode)
+    data = loads(f, legacy_mode=legacy_mode)
     return Arciv.from_parser(data)
+
 
 def load(f: TextIO, *, legacy_mode: bool = False) -> Dict[str, Any]:
     if legacy_mode:
@@ -47,6 +49,7 @@ def dumps(
         dump(h, data, settings=settings, encoder=encoder)
         return h.getvalue()
 
+
 __all__ = [
     "load",
     "loads",
@@ -54,5 +57,5 @@ __all__ = [
     "dumps",
     "ArcivWriter",
     "ArcivWriterSettings",
-    "Arciv"
+    "Arciv",
 ]

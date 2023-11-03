@@ -18,13 +18,13 @@ class ArchiveHeader:
 @dataclass
 class TocFileItem(_ArcivSpecialEncodable):
     File: str  # name
-    Path: Union[str,PathLike[str]]
+    Path: Union[str, PathLike[str]]
     Size: int
     Store: Optional[StorageType]
 
     @classmethod
-    def from_parser(cls, d:Dict[str,Any]) -> TocFileItem:
-        storage_value:int = d["Store"]
+    def from_parser(cls, d: Dict[str, Any]) -> TocFileItem:
+        storage_value: int = d["Store"]
         if storage_value == -1:
             storage = None
         else:
@@ -33,19 +33,18 @@ class TocFileItem(_ArcivSpecialEncodable):
         kwargs = d.copy()
         kwargs["Store"] = storage
 
-
         return cls(**kwargs)
 
     def to_parser_dict(self) -> Any:
-        obj =dataclasses.asdict(self)
+        obj = dataclasses.asdict(self)
         obj["Store"] = self.Store.value if self.Store is not None else -1
         return obj
+
 
 @dataclass
 class TocFolderInfo:
     folder: str  # name
-    path: Union[str,PathLike[str]]
-
+    path: Union[str, PathLike[str]]
 
 
 @dataclass
@@ -55,12 +54,12 @@ class TocFolderItem:
     FolderInfo: TocFolderInfo
 
     @classmethod
-    def from_parser(cls, d:Dict[str,Any]) -> TocFolderItem:
+    def from_parser(cls, d: Dict[str, Any]) -> TocFolderItem:
         files = [TocFileItem.from_parser(file) for file in d["Files"]]
         folders = [TocFolderItem.from_parser(folder) for folder in d["Folders"]]
         folder_info = TocFolderInfo(**d["FolderInfo"])
 
-        return cls(Files=files,Folders=folders,FolderInfo=folder_info)
+        return cls(Files=files, Folders=folders, FolderInfo=folder_info)
 
 
 @dataclass
@@ -71,8 +70,8 @@ class TocStorage(_ArcivSpecialEncodable):
     Wildcard: str
 
     @classmethod
-    def from_parser(cls, d:Dict[str,Any]) -> TocStorage:
-        storage_value:int = d["Storage"]
+    def from_parser(cls, d: Dict[str, Any]) -> TocStorage:
+        storage_value: int = d["Storage"]
         if storage_value == -1:
             storage = None
         else:
@@ -82,7 +81,7 @@ class TocStorage(_ArcivSpecialEncodable):
         return cls(**kwargs)
 
     def to_parser_dict(self) -> Any:
-        obj =dataclasses.asdict(self)
+        obj = dataclasses.asdict(self)
         obj["Storage"] = self.Storage.value if self.Storage is not None else -1
         return obj
 
@@ -91,15 +90,16 @@ class TocStorage(_ArcivSpecialEncodable):
 class TocHeader:
     Alias: str
     Name: str
-    RootPath: Union[PathLike[str],str]
+    RootPath: Union[PathLike[str], str]
     Storage: List[TocStorage]
 
     @classmethod
-    def from_parser(cls, d:Dict[str,Any]) -> TocHeader:
+    def from_parser(cls, d: Dict[str, Any]) -> TocHeader:
         storage = [TocStorage.from_parser(item) for item in d["Storage"]]
         kwargs = d.copy()
         kwargs["Storage"] = storage
         return cls(**kwargs)
+
 
 @dataclass
 class TocItem:
@@ -107,29 +107,32 @@ class TocItem:
     RootFolder: TocFolderItem
 
     @classmethod
-    def from_parser(cls, d:Dict[str,Any]) -> TocItem:
+    def from_parser(cls, d: Dict[str, Any]) -> TocItem:
         toc_header = TocHeader.from_parser(d["TOCHeader"])
         root_folder = TocFolderItem.from_parser(d["RootFolder"])
-        return cls(TOCHeader=toc_header,RootFolder=root_folder)
+        return cls(TOCHeader=toc_header, RootFolder=root_folder)
+
 
 @dataclass
 class Arciv(_ArcivSpecialEncodable):
     """A class-based approximation of the '.arciv' format."""
+
     ArchiveHeader: ArchiveHeader
     TOCList: List[TocItem]
 
     @classmethod
-    def from_parser(cls, d:Dict[str,Any]) -> Arciv:
-        """Converts a parser result to a formatted """
-        
+    def from_parser(cls, d: Dict[str, Any]) -> Arciv:
+        """Converts a parser result to a formatted"""
+
         root_dict = d["Archive"]
         header_dict = root_dict["ArchiveHeader"]
         toc_list_dicts = root_dict["TOCList"]
 
         header = ArchiveHeader(**header_dict)
-        toc_list = [TocItem.from_parser(toc_item_dict) for toc_item_dict in toc_list_dicts]
-        return cls(header,toc_list)
-
+        toc_list = [
+            TocItem.from_parser(toc_item_dict) for toc_item_dict in toc_list_dicts
+        ]
+        return cls(header, toc_list)
 
     def to_parser_dict(self):
-        return {"Archive":dataclasses.asdict(self)}
+        return {"Archive": dataclasses.asdict(self)}

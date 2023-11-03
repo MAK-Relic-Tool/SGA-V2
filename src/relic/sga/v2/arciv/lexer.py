@@ -4,33 +4,27 @@ from ply import lex
 from ply.lex import LexToken, Lexer, LexError
 
 reserved = {
-    "Archive":"KW_ARCHIVE",
-
-    "ArchiveHeader":"KW_ARCHIVE_HEADER",
-    "ArchiveName":"KW_ARCHIVE_NAME",
-
-    "TOCList":"KW_TOC_LIST",
-    "RootFolder":"KW_ROOT_FOLDER",
-    "Files":"KW_FILES",
-    "FolderInfo":"KW_FOLDER_INFO",
-    "Folders":"KW_FOLDERS",
-
+    "Archive": "KW_ARCHIVE",
+    "ArchiveHeader": "KW_ARCHIVE_HEADER",
+    "ArchiveName": "KW_ARCHIVE_NAME",
+    "TOCList": "KW_TOC_LIST",
+    "RootFolder": "KW_ROOT_FOLDER",
+    "Files": "KW_FILES",
+    "FolderInfo": "KW_FOLDER_INFO",
+    "Folders": "KW_FOLDERS",
     "Size": "KW_SIZE",
     "File": "KW_FILE",
     "Store": "KW_STORE",
-
-    "TOCHeader":"KW_TOC_HEADER",
-    "Alias":"KW_ALIAS",
-    "Name":"KW_NAME",
-    "RootPath":"KW_ROOT_PATH",
-
-    "Storage":"KW_STORAGE",
-    "MaxSize":"KW_MAX_SIZE",
+    "TOCHeader": "KW_TOC_HEADER",
+    "Alias": "KW_ALIAS",
+    "Name": "KW_NAME",
+    "RootPath": "KW_ROOT_PATH",
+    "Storage": "KW_STORAGE",
+    "MaxSize": "KW_MAX_SIZE",
     "MinSize": "KW_MIN_SIZE",
-    "Wildcard":"KW_WILDCARD",
-
-    "folder":"KW_FOLDER",
-    "path":"KW_PATH",
+    "Wildcard": "KW_WILDCARD",
+    "folder": "KW_FOLDER",
+    "path": "KW_PATH",
 }
 
 tokens = [
@@ -42,10 +36,12 @@ tokens = [
 
 literals = ["{", "}", ",", "="]
 
+
 def t_NAME(t: LexToken) -> LexToken:
     r"[A-Za-z]+"
-    t.type = reserved.get(t.value,"NAME")
+    t.type = reserved.get(t.value, "NAME")
     return t
+
 
 def t_curly_brace_left(t: LexToken) -> LexToken:
     r"""\{"""

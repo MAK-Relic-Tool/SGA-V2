@@ -3,36 +3,18 @@ import os
 from argparse import ArgumentParser, Namespace
 from os.path import splitext
 from pathlib import Path
-from typing import Optional, Dict, Any, BinaryIO
+from typing import Optional, Dict, Any
 
-import fs
 from relic.core.cli import CliPlugin, _SubParsersAction
 from relic.core.errors import RelicToolError
-from relic.sga.core.cli import _get_dir_type_validator, _get_file_type_validator
-from relic.sga.core.definitions import StorageType
+from relic.sga.core.cli import _get_file_type_validator
 
 from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
+from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, SgaFsV2
 from relic.sga.v2.serialization import SgaV2GameFormat
-from relic.sga.v2.sgafs import SgaFsV2, SgaFsV2Packer
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
-
-
-def _resolve_storage_type(s: Optional[str]) -> StorageType:
-    _word2storagetype = {
-        "STORE": StorageType.STORE,
-        "BUFFER": StorageType.BUFFER_COMPRESS,
-        "STREAM": StorageType.STREAM_COMPRESS,
-    }
-    if s is None:
-        return StorageType.STORE
-
-    s = s.upper()
-    if s in _word2storagetype:
-        return _word2storagetype[s]
-
-    return StorageType[s]
 
 
 class RelicSgaPackV2Cli(CliPlugin):
@@ -60,23 +42,20 @@ class RelicSgaPackV2Cli(CliPlugin):
         )
         return parser
 
-
-
     def command(self, ns: Namespace) -> Optional[int]:
         # Extract Args
         manifest_path: str = ns.manifest
         out_path: str = ns.out_path
-        file_name: str = None # type: ignore
+        file_name: str = None  # type: ignore
 
-        manifest_is_json = splitext(manifest_path)[1].lower()  == ".json"
+        manifest_is_json = splitext(manifest_path)[1].lower() == ".json"
 
-        def _check_parts(_path:str) -> bool:
+        def _check_parts(_path: str) -> bool:
             d, f = os.path.split(_path)
 
-            if os.path.exists(d) :
+            if os.path.exists(d):
                 return not os.path.isfile(d)
             return _check_parts(d)
-
 
         if out_path is None:
             out_path = os.path.dirname(manifest_path)
@@ -87,22 +66,20 @@ class RelicSgaPackV2Cli(CliPlugin):
             else:
                 out_path, file_name = os.path.split(out_path)
         elif not _check_parts(out_path):
-            raise RelicToolError(f"'{out_path}' is not a valid path; it treats a file as a directory!")
+            raise RelicToolError(
+                f"'{out_path}' is not a valid path; it treats a file as a directory!"
+            )
         else:
             out_path, file_name = os.path.split(out_path)
-
-
-
 
         # Execute Command
         print(f"SGA Packer")
         print(f"\tReading Manifest `{manifest_path}`")
-        with open(manifest_path,"r") as manifest_handle:
+        with open(manifest_path, "r") as manifest_handle:
             if manifest_is_json:
-                manifest_json:Dict[str,Any] = json.load(manifest_handle)
+                manifest_json: Dict[str, Any] = json.load(manifest_handle)
                 manifest = Arciv.from_parser(manifest_json)
             else:
-                print("\t\tThis may take a second...")
                 manifest = arciv.parse(manifest_handle)
         print(f"\t\tLoaded")
 
@@ -110,16 +87,15 @@ class RelicSgaPackV2Cli(CliPlugin):
         if file_name is None:
             file_name = manifest.ArchiveHeader.ArchiveName + ".sga"
         # Create parent directories
-        os.makedirs(out_path,exist_ok=True)
+        os.makedirs(out_path, exist_ok=True)
         # Create full path
         full_out_path = os.path.join(out_path, file_name)
         print(f"\tPacking SGA `{full_out_path}`")
-        with open(full_out_path,"wb") as out_handle:
-            sga = SgaFsV2Packer.pack(manifest,out_handle,safe_mode=True)
+        with open(full_out_path, "wb") as out_handle:
+            SgaFsV2Packer.pack(manifest, out_handle, safe_mode=True)
         print(f"\t\tPacked")
         print("\tDone!")
         return None
-
 
 
 class RelicSgaRepackV2Cli(CliPlugin):
@@ -183,6 +159,7 @@ class RelicSgaRepackV2Cli(CliPlugin):
 
         return None
 
+
 class RelicSgaV2Legacy2ArcivCli(CliPlugin):
     def _create_parser(
         self, command_group: Optional[_SubParsersAction] = None
@@ -244,9 +221,3 @@ class RelicSgaV2Legacy2ArcivCli(CliPlugin):
 
         return None
 
-
-if __name__ == "__main__":
-    # shortcut to root cli
-    from relic.core.cli import cli_root
-
-    cli_root.run()

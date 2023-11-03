@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import dataclasses
 from enum import Enum
 from io import StringIO
 from os import PathLike
@@ -338,7 +337,6 @@ class Parser:
             raise NotImplementedError(assign_type)
 
         return name, value
-
 
 
 def load(f: Union[TextIO, str]) -> Dict[str, Any]:

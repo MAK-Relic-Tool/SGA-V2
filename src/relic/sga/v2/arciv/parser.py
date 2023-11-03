@@ -1,11 +1,9 @@
-
 from ply import yacc
 from ply.yacc import LRParser
 from ply.yacc import YaccError
 from relic.sga.v2.arciv import lexer
 
 tokens = lexer.tokens
-
 
 
 def p_root(p):
@@ -38,7 +36,7 @@ def p_list_items(p):
     """
     # print("Enter List Items |", *p)
     if len(p) == 2:
-        p[0] = [p[1]] # make item into a list
+        p[0] = [p[1]]  # make item into a list
     elif len(p) == 3:
         p[0] = p[1]  # copy list; we are just consuming an optional comma
     elif len(p) == 4:
@@ -48,6 +46,7 @@ def p_list_items(p):
         raise NotImplementedError(len(p))
     # assert p[0] is not None
 
+
 def p_list_item(p):
     """
     list_item   : dict
@@ -56,7 +55,6 @@ def p_list_item(p):
     # print("Enter List Item |", *p)
     p[0] = p[1]
     # assert p[0] is not None
-
 
 
 def p_dict(p):
@@ -72,6 +70,7 @@ def p_dict(p):
         p[0] = p[2]
     # assert p[0] is not None
 
+
 def p_error(p):
     # print("Syntax error in input!",p)
     raise YaccError(p)
@@ -85,17 +84,18 @@ def p_dict_kvs(p):
     """
     # print("Enter KVS |", *p)
     if len(p) == 2:
-        k,v = p[1]
-        p[0] = {k:v} # make item into a dict
+        k, v = p[1]
+        p[0] = {k: v}  # make item into a dict
     elif len(p) == 3:
         p[0] = p[1]  # copy dict; we are just consuming an optional comma
     elif len(p) == 4:
         p[0] = p[1]
-        k,v = p[3]
+        k, v = p[3]
         p[0][k] = v
     else:
         raise NotImplementedError(len(p))
     # assert p[0] is not None
+
 
 def p_empty(p):
     """
@@ -103,6 +103,7 @@ def p_empty(p):
     """
     # print("Enter Empty |", *p)
     p[0] = None
+
 
 def p_kv(p):
     """

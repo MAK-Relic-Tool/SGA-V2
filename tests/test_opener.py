@@ -1,13 +1,13 @@
 import json
 import zlib
-from io import BytesIO, StringIO
+from io import StringIO
 from pathlib import Path
-from typing import List, Iterable, Any, Dict, TextIO
+from typing import List, Iterable, Any, Dict
 
 import fs
 import pytest
-from relic.sga.core import MagicWord, Version, StorageType
-from relic.sga.core.essencesfs import EssenceFS
+from relic.sga.core import Version, StorageType
+from relic.sga.core.essencefs import EssenceFS
 
 from relic.sga import v2
 
@@ -32,9 +32,9 @@ def v2_scan_directory(root_dir: str) -> Iterable[str]:
     root_directory = Path(root_dir)
     for path_object in root_directory.glob("**/*.sga"):
         with path_object.open("rb") as handle:
-            if not MagicWord.check_magic_word(handle, advance=True):
+            if not MAGIC_WORD.check_magic_word(handle, advance=True):
                 continue
-            version = Version.unpack(handle)
+            version = Version.read(handle)
             if version != v2.version:
                 continue
             # if path_object.with_suffix(".json").exists():  # ensure expected results file is also present

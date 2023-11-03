@@ -10,7 +10,12 @@ from enum import Enum
 from typing import BinaryIO, Optional, Union, Literal, Tuple, Any
 
 from relic.core.errors import RelicToolError
-from relic.core.lazyio import BinaryWindow, ZLibFileReader, tell_end, BinaryProxySerializer
+from relic.core.lazyio import (
+    BinaryWindow,
+    ZLibFileReader,
+    tell_end,
+    BinaryProxySerializer,
+)
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.hashtools import md5
 from relic.sga.core.serialization import (
@@ -98,7 +103,7 @@ class SgaHeaderV2(SgaHeader):
     _TOC_POS = 180
     _NAME_ENC = "utf-16-le"
     _NAME_PAD = "\0"
-    _INT_FMT = {"byteorder":"little","signed":False}
+    _INT_FMT = {"byteorder": "little", "signed": False}
 
     @property
     def file_md5(
@@ -112,11 +117,15 @@ class SgaHeaderV2(SgaHeader):
 
     @property
     def name(self) -> str:
-        return self._serializer.c_string.read(*self._NAME,encoding=self._NAME_ENC,padding=self._NAME_PAD)
+        return self._serializer.c_string.read(
+            *self._NAME, encoding=self._NAME_ENC, padding=self._NAME_PAD
+        )
 
     @name.setter
     def name(self, value: str):
-        self._serializer.c_string.write(value,*self._NAME,encoding=self._NAME_ENC,padding=self._NAME_PAD)
+        self._serializer.c_string.write(
+            value, *self._NAME, encoding=self._NAME_ENC, padding=self._NAME_PAD
+        )
 
     @property
     def toc_md5(
@@ -144,19 +153,19 @@ class SgaHeaderV2(SgaHeader):
 
     @property
     def toc_size(self) -> int:
-        return self._serializer.uint32.read(*self._TOC_SIZE,**self._INT_FMT)
+        return self._serializer.uint32.read(*self._TOC_SIZE, **self._INT_FMT)
 
     @toc_size.setter
     def toc_size(self, value: int):
-        self._serializer.uint32.write(value,*self._TOC_SIZE,**self._INT_FMT)
+        self._serializer.uint32.write(value, *self._TOC_SIZE, **self._INT_FMT)
 
     @property
     def data_pos(self) -> int:
-        return self._serializer.uint32.read(*self._DATA_POS,**self._INT_FMT)
+        return self._serializer.uint32.read(*self._DATA_POS, **self._INT_FMT)
 
     @data_pos.setter
     def data_pos(self, value: int):
-        self._serializer.uint32.write(value,*self._DATA_POS,**self._INT_FMT)
+        self._serializer.uint32.write(value, *self._DATA_POS, **self._INT_FMT)
 
     @property
     def data_size(self) -> None:
@@ -222,49 +231,49 @@ class _SgaTocFileV2(SgaTocFile, BinaryProxySerializer):
     _SIZE: int = None
     _STORAGE_TYPE_MASK: int = 0xF0  # 00, 10, 20
     _STORAGE_TYPE_SHIFT: int = 4
-    _INT_FORMAT = {"byteorder":"little","signed":False}
+    _INT_FORMAT = {"byteorder": "little", "signed": False}
 
     def __init__(self, parent: BinaryIO):
         super().__init__(parent)
 
     @property
     def name_offset(self):  # name_rel_pos
-        return self._serializer.int.read(*self._NAME_OFFSET,**self._INT_FORMAT)
+        return self._serializer.int.read(*self._NAME_OFFSET, **self._INT_FORMAT)
 
     @name_offset.setter
     def name_offset(self, value: int):
-        self._serializer.int.write(value,*self._NAME_OFFSET,**self._INT_FORMAT)
+        self._serializer.int.write(value, *self._NAME_OFFSET, **self._INT_FORMAT)
 
     @property
     def data_offset(self):  # data_rel_pos
-        return self._serializer.int.read(*self._DATA_OFFSET,**self._INT_FORMAT)
+        return self._serializer.int.read(*self._DATA_OFFSET, **self._INT_FORMAT)
 
     @data_offset.setter
     def data_offset(self, value: int):
-        self._serializer.int.write(value,*self._DATA_OFFSET,**self._INT_FORMAT)
+        self._serializer.int.write(value, *self._DATA_OFFSET, **self._INT_FORMAT)
 
     @property
     def compressed_size(self):  # length_in_archive
-        return self._serializer.int.read(*self._COMP_SIZE,**self._INT_FORMAT)
+        return self._serializer.int.read(*self._COMP_SIZE, **self._INT_FORMAT)
 
     @compressed_size.setter
     def compressed_size(self, value: int):
-        self._serializer.int.write(value,*self._COMP_SIZE,**self._INT_FORMAT)
+        self._serializer.int.write(value, *self._COMP_SIZE, **self._INT_FORMAT)
 
     @property
     def decompressed_size(self):  # length_on_disk
-        return self._serializer.int.read(*self._DECOMP_SIZE,**self._INT_FORMAT)
+        return self._serializer.int.read(*self._DECOMP_SIZE, **self._INT_FORMAT)
 
     @decompressed_size.setter
     def decompressed_size(self, value: int):
-        self._serializer.int.write(value,*self._DECOMP_SIZE,**self._INT_FORMAT)
+        self._serializer.int.write(value, *self._DECOMP_SIZE, **self._INT_FORMAT)
 
     @property
     def storage_type(self) -> StorageType:
         """
         The Storage Type that the
         """
-        value = self._serializer.int.read(*self._FLAGS,**self._INT_FORMAT)
+        value = self._serializer.int.read(*self._FLAGS, **self._INT_FORMAT)
         value &= self._STORAGE_TYPE_MASK
         value >>= self._STORAGE_TYPE_SHIFT
         return StorageType(value)
@@ -273,10 +282,10 @@ class _SgaTocFileV2(SgaTocFile, BinaryProxySerializer):
     def storage_type(self, value: StorageType):
         # assuming this IS IN FACT, a flag value, we need to read it to edit it
         flag = value << self._STORAGE_TYPE_SHIFT
-        buffer_value = self._serializer.int.read(*self._FLAGS,**self._INT_FORMAT)
+        buffer_value = self._serializer.int.read(*self._FLAGS, **self._INT_FORMAT)
         buffer_value &= ~self._STORAGE_TYPE_MASK  # clear storage flag
         buffer_value |= flag  # apply storage flag
-        self._serializer.int.write(buffer_value,*self._FLAGS,**self._INT_FORMAT)
+        self._serializer.int.write(buffer_value, *self._FLAGS, **self._INT_FORMAT)
 
 
 class SgaTocFileV2Dow(_SgaTocFileV2):
@@ -295,15 +304,22 @@ class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
     _SIZE = _next(*_CRC_OFFSET)
     _NAME_ENC = "ascii"
     _NAME_PADDING = "\0"
-    _INT_FORMAT = {"byteorder":"little","signed":False}
+    _INT_FORMAT = {"byteorder": "little", "signed": False}
 
     @property
     def name(self) -> str:
-        return self._serializer.c_string.read(*self._NAME_OFFSET,encoding=self._NAME_ENC,padding=self._NAME_PADDING)
+        return self._serializer.c_string.read(
+            *self._NAME_OFFSET, encoding=self._NAME_ENC, padding=self._NAME_PADDING
+        )
 
     @name.setter
     def name(self, value: str):
-        self._serializer.c_string.write(value,*self._NAME_OFFSET,encoding=self._NAME_ENC,padding=self._NAME_PADDING)
+        self._serializer.c_string.write(
+            value,
+            *self._NAME_OFFSET,
+            encoding=self._NAME_ENC,
+            padding=self._NAME_PADDING,
+        )
 
     @property
     def modified(self) -> int:
@@ -321,11 +337,11 @@ class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
 
     @property
     def crc32(self) -> int:
-        return self._serializer.int.read(*self._CRC_OFFSET,**self._INT_FORMAT)
+        return self._serializer.int.read(*self._CRC_OFFSET, **self._INT_FORMAT)
 
     @crc32.setter
     def crc32(self, value: int):
-        self._serializer.int.write(value,*self._CRC_OFFSET,**self._INT_FORMAT)
+        self._serializer.int.write(value, *self._CRC_OFFSET, **self._INT_FORMAT)
 
 
 class SgaTocFileDataV2Dow:
@@ -388,7 +404,10 @@ GAME_FORMAT_TOC_FILE_DATA = {
 class SgaTocV2(SgaToc):
     @classmethod
     def _determine_next_header_block_ptr(
-        cls, header: SgaTocHeaderV2, toc_end:int,  index: int = -1,
+        cls,
+        header: SgaTocHeaderV2,
+        toc_end: int,
+        index: int = -1,
     ) -> int:
         smallest = toc_end
         ptrs = [
@@ -403,7 +422,7 @@ class SgaTocV2(SgaToc):
         return smallest
 
     @classmethod
-    def _determine_game(cls, header: SgaTocHeaderV2, toc_end:int):
+    def _determine_game(cls, header: SgaTocHeaderV2, toc_end: int):
         # Unfortunately DoW and IC (Steam) have a slightly different file layout
         # DoW is 20 and IC is 17
         # We can determine which via comparing the size of the full block
@@ -414,7 +433,9 @@ class SgaTocV2(SgaToc):
                 f"Game format could not be determined; no files in file block."
             )
 
-        file_block_end = cls._determine_next_header_block_ptr(header, toc_end, index=file_block_start)
+        file_block_end = cls._determine_next_header_block_ptr(
+            header, toc_end, index=file_block_start
+        )
         file_block_size = file_block_end - file_block_start
         file_def_size = file_block_size / file_count
 
@@ -440,7 +461,7 @@ class SgaTocV2(SgaToc):
         )
         if game is None:
             now = parent.tell()
-            end = parent.seek(0,os.SEEK_END)
+            end = parent.seek(0, os.SEEK_END)
             parent.seek(now)
             game = self._determine_game(self._header, end)
         self._game_format = game

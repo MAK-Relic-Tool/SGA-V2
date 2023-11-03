@@ -8,7 +8,6 @@ from os import PathLike
 from typing import Optional, Iterable, Union, List, Dict, Any, TextIO
 
 
-
 @dataclass
 class ArcivWriterSettings:
     indent: Optional[str] = "\t"
@@ -94,7 +93,7 @@ class ArcivWriter:
 
     def _format_path(
         self,
-        value: Union[str,PathLike[str]],
+        value: Union[str, PathLike[str]],
         *,
         in_collection: bool = False,
         in_assignment: bool = False,
@@ -197,7 +196,7 @@ class ArcivEncoder:
     def default(
         self, obj: Any
     ) -> Union[str, PathLike[str], int, float, Dict[str, Any], List[Any]]:
-        if isinstance(obj,_ArcivSpecialEncodable):
+        if isinstance(obj, _ArcivSpecialEncodable):
             # Special case to handle the _Arciv Dataclass and its parts
             #   These classes may not map 1-1 to the file; such as the root; which has an implied ARCHIVE = field
             return obj.to_parser_dict()
@@ -212,5 +211,6 @@ class ArcivEncoder:
 
 class _ArcivSpecialEncodable:
     """Marks the class as needing special handling when automatically being encoded"""
-    def to_parser_dict(self) -> Dict[str,Any]:
+
+    def to_parser_dict(self) -> Dict[str, Any]:
         raise NotImplementedError
