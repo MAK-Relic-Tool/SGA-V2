@@ -8,7 +8,7 @@ import fs
 import pytest
 from relic.sga.core.definitions import StorageType, MAGIC_WORD
 from relic.sga.core.essencefs.definitions import EssenceFS
-from relic.sga.core.serialization import VersionSerializer
+from relic.sga.core.serialization import VersionSerializer, validate_magic_word
 
 from relic.sga import v2
 
@@ -33,9 +33,7 @@ def v2_scan_directory(root_dir: str) -> Iterable[str]:
     root_directory = Path(root_dir)
     for path_object in root_directory.glob("**/*.sga"):
         with path_object.open("rb") as handle:
-            raise NotImplementedError
-
-            if not MAGIC_WORD.check_magic_word(handle, advance=True):
+            if validate_magic_word(MAGIC_WORD, handle,advance=True):
                 continue
             version = VersionSerializer.read(handle)
             if version != v2.version:
