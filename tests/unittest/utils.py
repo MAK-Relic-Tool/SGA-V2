@@ -9,7 +9,7 @@ from fs.copy import copy_fs
 
 
 def get_data_path(*parts:str) -> str:
-    data = abspath(join(__file__,"..","..","data"))
+    data = abspath(join(__file__, "..", "..", "data"))
     return join(data,*parts)
 
 def get_dataset_path(*parts:str) -> str:
