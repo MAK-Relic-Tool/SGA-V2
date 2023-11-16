@@ -5,17 +5,17 @@ from typing import List
 import fs
 from fs.base import FS
 from fs.glob import GlobMatch
+from fs.subfs import SubFS
 
 from relic.sga.v2 import EssenceFSV2
-from utils import create_temp_dataset_fs, get_dataset_path
+from utils import create_temp_dataset_fs, get_dataset_path, get_datasets
+from contextlib import contextmanager
 import pytest
 from relic.core import CLI
 
+from typing import Dict, Any
 
-_DATASETS = [
-    get_dataset_path("sample-10-26-2023"),
-    get_dataset_path("sample-10-28-2023")
-]
+_DATASETS = get_datasets()
 
 @pytest.mark.parametrize(
     "dataset",_DATASETS
@@ -40,19 +40,26 @@ class TestCLI:
         return dump_path, dump_sys_path
 
 
-    def _validate_osfs_equal(self, src:FS, dst:FS, manifest:List[str]):
-        for file in manifest:
+    def _validate_osfs_equal(self, src:FS, dst:FS, manifest:Dict[str,Any]):
+        for file, meta in manifest.get("files",{}).items():
             assert dst.exists(file)
 
             src_data = src.getbytes(file)
             dst_data = dst.getbytes(file)
 
-            assert src_data == dst_data, "Unpacking data mismatch!"
+            assert dst_data == src_data , "Unpacking data mismatch!"
 
             src_info = src.getinfo(file, ["details"])
             dst_info = dst.getinfo(file, ["details"])
 
-            assert src_info.modified.replace(microsecond=0) == dst_info.modified.replace(microsecond=0)
+            src_mod_time = src_info.modified
+            dst_mod_time = dst_info.modified
+
+            if "modified" not in meta:
+                assert dst_mod_time == src_mod_time, "Modified Time mismatch"
+            else:
+                man_mod_time = RelicDateTimeSerializer.unix2datetime(meta["modified"])
+                assert dst_mod_time in [man_mod_time, src_mod_time], "Modified Time mismatch"
 
     def _validate_sgafs_equal_osfs_onedrive(self, osfs:FS,sgafs:EssenceFSV2, manifest:List[str]):
         for file in manifest:
@@ -71,6 +78,13 @@ class TestCLI:
 
             assert src_mod.replace(microsecond=0) == dst_mod.replace(microsecond=0)
 
+    @contextmanager
+    def _open_folder(self, fs:FS, folder_name:str) -> SubFS[FS]:
+        if not fs.exists(folder_name):
+            pytest.skip(f"'{folder_name}' folder was not found; skipping validation")
+
+        with fs.opendir(folder_name) as dir:
+            yield dir
 
     def test_pack(self, dataset: str) -> None:
         """
@@ -97,7 +111,7 @@ class TestCLI:
         tmp_fs: FS
         MAN_FILE = "file_manifest.json"
         with create_temp_dataset_fs(dataset) as tmp_fs:
-            with tmp_fs.opendir("Meta") as meta_dir:
+            with self._open_folder(tmp_fs,"Meta") as meta_dir:
                 if not meta_dir.exists(MAN_FILE):
                     pytest.skip(f"'{MAN_FILE}' was not found; skipping validation")
                 files = json.loads(meta_dir.gettext(MAN_FILE))
@@ -120,11 +134,11 @@ class TestCLI:
         Tests that the CLI Unpack properly extracts all files in the SGA
         """
         tmp_fs: FS
-        MAN_FILE = "file_manifest.json"
+        MAN_FILE = "manifest.json"
         with create_temp_dataset_fs(dataset) as tmp_fs:
-            with tmp_fs.opendir("Meta") as meta_dir:
+            with self._open_folder(tmp_fs,"Meta") as meta_dir:
                 if not meta_dir.exists(MAN_FILE):
-                    pytest.skip(f"'{MAN_FILE}' was not found; skipping validation")
+                    pytest.skip(f"'{MAN_FILE}' file was not found; skipping validation")
                 files = json.loads(meta_dir.gettext(MAN_FILE))
 
             for sga in tmp_fs.glob("**/*.sga"):

@@ -38,6 +38,7 @@ from relic.sga.core.serialization import (
     SgaNameWindow,
     SgaTocFolder,
     SgaTocDrive,
+    VersionSerializer,
 )
 
 from relic.sga.v2.arciv.definitions import (
@@ -1023,7 +1024,7 @@ class _V2TocDisassembler:
             modified = RelicDateTimeSerializer.datetime2unix(modified)
         data_header.modified = modified
 
-        data_header.crc32 = crc32().hash(uncompressed)
+        data_header.crc32 = crc32.hash(uncompressed)
 
         # Write Data
         data_ptr = window_start + window_size
@@ -1737,9 +1738,14 @@ class _SgaV2Serializer:
         # Third pass, Fill Metadata
         name = self.archive_name
         header_size = toc_size
-        file_md5 = md5(self.MD5_START, eigen=_FILE_MD5_EIGEN).hash(self.working_handle)
-        header_md5 = md5(self.MD5_START, size=toc_size, eigen=_TOC_MD5_EIGEN).hash(
-            self.working_handle
+        file_md5 = md5.hash(
+            self.working_handle, start=self.MD5_START, eigen=_FILE_MD5_EIGEN
+        )
+        header_md5 = md5.hash(
+            self.working_handle,
+            start=self.MD5_START,
+            size=toc_size,
+            eigen=_TOC_MD5_EIGEN,
         )
 
         self.working_handle.seek(self.ARCHIVE_HEADER_POS)
@@ -1757,12 +1763,12 @@ class _SgaV2Serializer:
         # Finalize stream: copy to output (unless we were able to write to the output directly)
         if self.out is self.working_handle:
             return
-        chunk_copy(self.working_handle, self.out, input_start=0)
+        chunk_copy(self.working_handle, self.out, src_start=0)
 
     @classmethod
     def write_magic_version(cls, handle: BinaryIO):
-        MAGIC_WORD.write_magic_word(handle)
-        version.pack(handle)
+        MAGIC_WORD.write(handle)
+        VersionSerializer.write(handle, version)
 
     @classmethod
     def write_meta_block(
@@ -2115,7 +2121,7 @@ class EssenceFSV2(EssenceFS):
         name: Optional[str] = None,
         verify_header=False,
         verify_file=False,
-        editable:bool=True,
+        editable: bool = True,
     ):
         """
         :param handle: The backing IO object to read/write to. If not present, the archive is automatically treated as an empty in-memory archive.
@@ -2131,7 +2137,7 @@ class EssenceFSV2(EssenceFS):
         self._file_md5: Optional[bytes] = None
         self._header_md5: Optional[bytes] = None
         self._drives: Dict[str, SgaFsDriveV2] = {}
-        self._lazy_file:Optional[SgaFileV2] = None
+        self._lazy_file: Optional[SgaFileV2] = None
         self._game_format: Optional[SgaV2GameFormat] = game
         self._name = name
         self._update_stream = editable
@@ -2425,8 +2431,8 @@ class EssenceFSV2(EssenceFS):
         return node.verify_crc32(error)
 
     def close(self):  # type: () -> None
-        if self._handle is not None:
-            self._handle.close()
+        if self._stream is not None:
+            self._stream.close()
         super().close()
 
     def __enter__(self):
@@ -2436,7 +2442,26 @@ class EssenceFSV2(EssenceFS):
         if self._update_stream:
             self.save(safe_write=True)
         self.close()
-        return super().__exit__(exc_type,exc_val,exc_tb)
+        return super().__exit__(exc_type, exc_val, exc_tb)
+
+    def scandir(
+        self,
+        path: str,
+        namespaces: Optional[List[str]] = None,
+        page: Optional[Tuple[int, int]] = None,
+    ) -> Iterator[Info]:
+        alias, root = SgaPathResolver.parse(path)
+        info = (
+            self.getinfo(
+                SgaPathResolver.build(root, name, alias=alias), namespaces=namespaces
+            )
+            for name in self.listdir(path)
+        )
+        iter_info = iter(info)
+        if page is not None:
+            start, end = page
+            iter_info = itertools.islice(iter_info, start, end)
+        return iter_info
 
 
 # class SgaV2Verifier()

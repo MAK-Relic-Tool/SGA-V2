@@ -146,7 +146,9 @@ class RelicSgaRepackV2Cli(CliPlugin):
             Path(out_sga).parent.mkdir(parents=True, exist_ok=True)
 
         with open(in_sga, "rb") as sga_h:
-            sgafs = EssenceFSV2(sga_h, parse_handle=True, in_memory=True, game=game_format)
+            sgafs = EssenceFSV2(
+                sga_h, parse_handle=True, in_memory=True, game=game_format
+            )
             # Write to binary file:
             if out_sga is not None:
                 print(f"\tWriting `{out_sga}`")
@@ -208,7 +210,9 @@ class RelicSgaV2Legacy2ArcivCli(CliPlugin):
             Path(out_sga).parent.mkdir(parents=True, exist_ok=True)
 
         with open(in_sga, "rb") as sga_h:
-            sgafs = EssenceFSV2(sga_h, parse_handle=True, in_memory=True, game=game_format)
+            sgafs = EssenceFSV2(
+                sga_h, parse_handle=True, in_memory=True, game=game_format
+            )
             # Write to binary file:
             if out_sga is not None:
                 print(f"\tWriting `{out_sga}`")
@@ -220,4 +224,3 @@ class RelicSgaV2Legacy2ArcivCli(CliPlugin):
             print(f"\tDone!")
 
         return None
-

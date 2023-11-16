@@ -12,6 +12,8 @@ import pytest
 from fs.base import FS
 from fs.info import Info
 
+from relic.core.cli import CLI
+
 
 class CommandTests:
     def test_run(self, args: Sequence[str], output: str, exit_code: int):
@@ -24,7 +26,6 @@ class CommandTests:
         assert status == exit_code
 
     def test_run_with(self, args: Sequence[str], output: str, exit_code: int):
-        from relic.core import CLI
 
         with io.StringIO() as f:
             with redirect_stdout(f):
@@ -83,7 +84,6 @@ def test_cli_unpack_pack_one_to_one(src: str):
     }
 }"""
 
-    from relic.core import CLI
 
     with tempfile.TemporaryDirectory() as temp_dir:
         CLI.run_with("sga", "unpack", src, temp_dir)
@@ -96,7 +96,7 @@ def test_cli_unpack_pack_one_to_one(src: str):
             with tempfile.NamedTemporaryFile("rb", delete=False) as repacked:
                 repacked_file_name = repacked.name
 
-            status = cli.run_with(
+            status = CLI.run_with(
                 "sga", "pack", "v2", temp_dir, repacked_file_name, cfg_file_name
             )
             assert status == 0
@@ -135,14 +135,13 @@ def test_cli_unpack_pack_one_to_one(src: str):
 
 @pytest.mark.parametrize("src", argvalues=_SAMPLES, ids=_SAMPLES)
 def test_cli_repack(src: str):
-    from relic.core.cli import cli_root as cli
 
     repacked_file_name = None
     try:
         with tempfile.NamedTemporaryFile("w+", delete=False) as config_file:
             repacked_file_name = config_file.name
 
-        status = cli.run_with("sga", "repack", "v2", src, repacked_file_name)
+        status = CLI.run_with("sga", "repack", "v2", src, repacked_file_name)
         assert status == 0
     finally:
         try:

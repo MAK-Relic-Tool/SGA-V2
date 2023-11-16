@@ -1,4 +1,4 @@
-.arciv files present in dataset are NOT VALID
+.arciv files present in datasets are NOT VALID
 
 Because .arciv files are built using an absolute path; automated tests on other systems would fail when building
 
