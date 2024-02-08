@@ -2,48 +2,46 @@ from io import StringIO
 from typing import Union, TextIO, Dict, Any, Optional
 
 from relic.sga.v2.arciv.definitions import Arciv
-from relic.sga.v2.arciv.legacy import load as legacy_load
 from relic.sga.v2.arciv.lexer import build as build_lexer
 from relic.sga.v2.arciv.parser import build as build_parser
 from relic.sga.v2.arciv.writer import ArcivWriter, ArcivWriterSettings, ArcivEncoder
 
 
-def parse(f: TextIO, *, legacy_mode: bool = False) -> Arciv:
-    data = load(f, legacy_mode=legacy_mode)
+def parse(f: TextIO) -> Arciv:
+    data = load(f)
     return Arciv.from_parser(data)
 
 
-def parses(f: str, *, legacy_mode: bool = False) -> Arciv:
-    data = loads(f, legacy_mode=legacy_mode)
+def parses(f: str) -> Arciv:
+    data = loads(f)
     return Arciv.from_parser(data)
 
 
-def load(f: TextIO, *, legacy_mode: bool = False) -> Dict[str, Any]:
-    if legacy_mode:
-        return legacy_load(f)
-    else:
-        lexer = build_lexer()
-        parser = build_parser()
-        return parser.parse(f.read(), lexer=lexer)  # type: ignore
+def load(f: TextIO) -> Dict[str, Any]:
+    lexer = build_lexer()
+    parser = build_parser()
+    return parser.parse(f.read(), lexer=lexer)  # type: ignore
 
 
-def loads(f: str, *, legacy_mode: bool = False) -> Dict[str, Any]:
+def loads(f: str) -> Dict[str, Any]:
     with StringIO(f) as h:
-        return load(h, legacy_mode=legacy_mode)
+        return load(h)
 
 
 def dump(
     f: TextIO,
     data: Any,
-    settings: Optional[ArcivWriterSettings],
-    encoder: Optional[ArcivEncoder],
+    settings: Optional[ArcivWriterSettings] = None,
+    encoder: Optional[ArcivEncoder] = None,
 ) -> None:
     _writer = ArcivWriter(settings=settings, encoder=encoder)
     _writer.writef(f, data)
 
 
 def dumps(
-    data: Any, settings: Optional[ArcivWriterSettings], encoder: Optional[ArcivEncoder]
+    data: Any,
+    settings: Optional[ArcivWriterSettings] = None,
+    encoder: Optional[ArcivEncoder] = None,
 ) -> str:
     with StringIO() as h:
         dump(h, data, settings=settings, encoder=encoder)

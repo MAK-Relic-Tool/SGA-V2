@@ -7,7 +7,7 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 from enum import Enum
-from typing import BinaryIO, Optional, Union, Literal, Tuple, Any
+from typing import BinaryIO, Optional, Union, Literal, Tuple, Any, Dict
 
 from relic.core.errors import RelicToolError
 from relic.core.lazyio import (
@@ -17,7 +17,7 @@ from relic.core.lazyio import (
     BinaryProxySerializer,
 )
 from relic.sga.core.definitions import StorageType
-from relic.sga.core.hashtools import md5
+from relic.sga.core.hashtools import md5, Hasher
 from relic.sga.core.serialization import (
     SgaHeader,
     SgaTocHeader,
