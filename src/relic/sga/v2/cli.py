@@ -30,7 +30,8 @@ class RelicSgaPackV2Cli(CliPlugin):
         parser.add_argument(
             "manifest",
             type=_get_file_type_validator(exists=True),
-            help="An .arciv file (or a suitable .json matching the .arciv tree). If the file extension is not '.json' or '.arciv', '.arciv' is assumed",
+            help="An .arciv file (or a suitable .json matching the .arciv tree)."
+            " If the file extension is not '.json' or '.arciv', '.arciv' is assumed",
         )
         parser.add_argument(
             "out_path",
@@ -73,7 +74,7 @@ class RelicSgaPackV2Cli(CliPlugin):
             out_path, file_name = os.path.split(out_path)
 
         # Execute Command
-        print(f"SGA Packer")
+        print("SGA Packer")
         print(f"\tReading Manifest `{manifest_path}`")
         with open(manifest_path, "r") as manifest_handle:
             if manifest_is_json:
@@ -81,7 +82,7 @@ class RelicSgaPackV2Cli(CliPlugin):
                 manifest = Arciv.from_parser(manifest_json)
             else:
                 manifest = arciv.parse(manifest_handle)
-        print(f"\t\tLoaded")
+        print("\t\tLoaded")
 
         # Resolve name when out_path was passed in as a directory
         if file_name is None:
@@ -93,7 +94,7 @@ class RelicSgaPackV2Cli(CliPlugin):
         print(f"\tPacking SGA `{full_out_path}`")
         with open(full_out_path, "wb") as out_handle:
             SgaFsV2Packer.pack(manifest, out_handle, safe_mode=True)
-        print(f"\t\tPacked")
+        print("\t\tPacked")
         print("\tDone!")
         return None
 

@@ -134,5 +134,5 @@ class Arciv(_ArcivSpecialEncodable):
         ]
         return cls(header, toc_list)
 
-    def to_parser_dict(self):
+    def to_parser_dict(self) -> Dict[str, Any]:
         return {"Archive": dataclasses.asdict(self)}

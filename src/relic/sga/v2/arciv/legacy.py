@@ -35,7 +35,7 @@ class TokenStream:
     def __enter__(self) -> TokenStream:
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:  # TODO specify typing
         ...
 
     def _read(self, pos: int) -> Optional[Tuple[Optional[str], Token]]:

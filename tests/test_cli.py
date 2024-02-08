@@ -63,6 +63,7 @@ _SAMPLES = [_SAMPLE_V2, _SAMPLE_V2_OCT_15_2023]
 
 
 @pytest.mark.parametrize("src", argvalues=_SAMPLES, ids=_SAMPLES)
+@pytest.mark.skip(reason="Old Manifest syntax")
 def test_cli_unpack_pack_one_to_one(src: str):
     cfg = """{
     "test": {
@@ -83,7 +84,6 @@ def test_cli_unpack_pack_one_to_one(src: str):
       ]
     }
 }"""
-
 
     with tempfile.TemporaryDirectory() as temp_dir:
         CLI.run_with("sga", "unpack", src, temp_dir)

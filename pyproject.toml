@@ -1,6 +1,101 @@
 [build-system]
-requires = [
-    "setuptools>=42",
-    "wheel"
-]
+requires = ["setuptools>=61.2"]
 build-backend = "setuptools.build_meta"
+
+[project]
+name = "relic-tool-sga-v2"
+authors = [{name = "Marcus Kertesz"}]
+description = "A plugin to read/write Relic SGA (V2) archive files."
+classifiers = [
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+]
+requires-python = ">=3.9"
+dependencies = ["relic-tool-sga-core ~= 2.0.0"]
+dynamic = ["version"]
+
+[project.readme]
+file = "README.md"
+content-type = "text/markdown"
+
+[project.urls]
+Homepage = "https://github.com/MAK-Relic-Tool/Relic-Tool-SGA-V2"
+"Bug Tracker" = "https://github.com/MAK-Relic-Tool/Issues-Tracker/issues"
+
+[project.entry-points."fs.opener"]
+sga-v2 = "relic.sga.v2.opener:EssenceFSV2Opener"
+sga-dow = "relic.sga.v2.opener:EssenceFSV2Opener"
+sga-ic = "relic.sga.v2.opener:EssenceFSV2Opener"
+
+[project.entry-points."relic.sga.opener"]
+"v2.0" = "relic.sga.v2.essencefs:EssenceFSV2Opener"
+
+[project.entry-points."relic.cli.sga.pack"]
+v2 = "relic.sga.v2.cli:RelicSgaPackV2Cli"
+
+[project.entry-points."relic.cli.sga.repack"]
+v2 = "relic.sga.v2.cli:RelicSgaRepackV2Cli"
+
+[tool.setuptools]
+include-package-data = true
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+namespaces = true
+
+[tool.setuptools.dynamic]
+version = {attr = "relic.sga.v2.__version__"}
+
+
+
+[tool.mypy]
+# ignore_missing_imports = False ;Moved to module_level ignores
+mypy_path = "$MYPY_CONFIG_FILE_DIR/src"
+namespace_packages = true
+color_output = true
+pretty = true
+# strict = true
+# Manually specify strict flags
+warn_unused_configs = true
+disallow_any_generics = true
+disallow_subclassing_any = true
+disallow_untyped_calls = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_return_any = true
+no_implicit_reexport = true
+strict_equality = true
+extra_checks = true
+
+[[tool.mypy.overrides]]
+module = [
+    "serialization_tools.*",
+]
+ignore_missing_imports = true
+
+
+[[tool.mypy.overrides]]
+module = [
+    "tests.*",
+    "ply.*",
+    "relic.sga.v2.arciv.parsetab",
+    "relic.sga.v2.arciv.legacy"
+]
+ignore_missing_imports = true
+ignore_errors = true
+
+
+[[tool.mypy.overrides]]
+module = [
+    "tool.mypy-relic.sga.v2.arciv.parser",
+]
+disallow_untyped_defs = false

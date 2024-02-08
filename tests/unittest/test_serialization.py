@@ -10,7 +10,19 @@ from relic.core.errors import RelicToolError
 from relic.sga.core import StorageType
 from relic.sga.core.serialization import SgaTocHeader
 
-from relic.sga.v2.serialization import RelicUnixTimeSerializer, RelicDateTimeSerializer, _FILE_MD5_EIGEN, _TOC_MD5_EIGEN, SgaHeaderV2, SgaTocHeaderV2, SgaTocDriveV2, SgaTocFolderV2, SgaTocFileV2Dow, SgaTocFileV2ImpCreatures, _SgaTocFileV2
+from relic.sga.v2.serialization import (
+    RelicUnixTimeSerializer,
+    RelicDateTimeSerializer,
+    _FILE_MD5_EIGEN,
+    _TOC_MD5_EIGEN,
+    SgaHeaderV2,
+    SgaTocHeaderV2,
+    SgaTocDriveV2,
+    SgaTocFolderV2,
+    SgaTocFileV2Dow,
+    SgaTocFileV2ImpCreatures,
+    _SgaTocFileV2,
+)
 
 _UINT32_M = 4294967295
 _UINT16_M = 65535
@@ -22,11 +34,19 @@ def _pad_bytes(b: bytes, size: int, pad: bytes = b"\0"):
 
 # RELIC UNIX TIME = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 _TestRelicUnixTimeSerializerData = [
-    (float(0x54165d23) + 0.000001, b"#]\x16T"), (float(0x54165d23) + 0.999999, b"#]\x16T"), (0x54165d23, b"#]\x16T")
+    (float(0x54165D23) + 0.000001, b"#]\x16T"),
+    (float(0x54165D23) + 0.999999, b"#]\x16T"),
+    (0x54165D23, b"#]\x16T"),
 ]
 
 
-@pytest.mark.parametrize(["unpacked", "packed", ], _TestRelicUnixTimeSerializerData)
+@pytest.mark.parametrize(
+    [
+        "unpacked",
+        "packed",
+    ],
+    _TestRelicUnixTimeSerializerData,
+)
 class TestRelicUnixTimeSerializer:
     def test_pack(self, unpacked: Union[float, int], packed: bytes):
         expected = packed
@@ -40,9 +60,21 @@ class TestRelicUnixTimeSerializer:
 
 
 _TestRelicDateTimeSerializer = [
-    (datetime(2014, 9, 15, 3, 29, 39, 1, tzinfo=timezone.utc), b"#]\x16T", datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc)),
-    (datetime(2014, 9, 15, 3, 29, 39, 999999, tzinfo=timezone.utc), b"#]\x16T", datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc)),
-    (datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc), b"#]\x16T", datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc))
+    (
+        datetime(2014, 9, 15, 3, 29, 39, 1, tzinfo=timezone.utc),
+        b"#]\x16T",
+        datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc),
+    ),
+    (
+        datetime(2014, 9, 15, 3, 29, 39, 999999, tzinfo=timezone.utc),
+        b"#]\x16T",
+        datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc),
+    ),
+    (
+        datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc),
+        b"#]\x16T",
+        datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc),
+    ),
 ]
 
 
@@ -61,12 +93,21 @@ class TestRelicDateTimeSerializer:
 
 
 _TestRelicDateTimeSerializer_Unix2Datetime = [
-    (float(0x54165d23) + 0.000001, datetime(2014, 9, 15, 3, 29, 39, 1, tzinfo=timezone.utc)), (float(0x54165d23) + 0.999999, datetime(2014, 9, 15, 3, 29, 39, 999999, tzinfo=timezone.utc)),
-    (0x54165d23, datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc))
+    (
+        float(0x54165D23) + 0.000001,
+        datetime(2014, 9, 15, 3, 29, 39, 1, tzinfo=timezone.utc),
+    ),
+    (
+        float(0x54165D23) + 0.999999,
+        datetime(2014, 9, 15, 3, 29, 39, 999999, tzinfo=timezone.utc),
+    ),
+    (0x54165D23, datetime(2014, 9, 15, 3, 29, 39, tzinfo=timezone.utc)),
 ]
 
 
-@pytest.mark.parametrize(["value", "output"], _TestRelicDateTimeSerializer_Unix2Datetime)
+@pytest.mark.parametrize(
+    ["value", "output"], _TestRelicDateTimeSerializer_Unix2Datetime
+)
 def test_relic_datetime_serializer_unix2datetime(value, output):
     result = RelicDateTimeSerializer.unix2datetime(value)
     assert result == output
@@ -76,7 +117,7 @@ def test_relic_datetime_serializer_unix2datetime(value, output):
 # Useful for ensuring the Eigen values aren't accidentally changed
 _TEST_MD5_EIGEN = [
     ("_FILE_MD5_EIGEN", _FILE_MD5_EIGEN, b"E01519D6-2DB7-4640-AF54-0A23319C56C3"),
-    ("_TOC_MD5_EIGEN", _TOC_MD5_EIGEN, b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF")
+    ("_TOC_MD5_EIGEN", _TOC_MD5_EIGEN, b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF"),
 ]
 
 
@@ -86,7 +127,9 @@ def test_md5_eigen(name: str, value: bytes, expected: bytes):
 
 
 # SGA HEADER = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-def build_sga_header_buffer(file_md5: bytes, name: str, header_md5: bytes, header_size: int, data_pos: int) -> bytes:
+def build_sga_header_buffer(
+    file_md5: bytes, name: str, header_md5: bytes, header_size: int, data_pos: int
+) -> bytes:
     MD5_SIZE = 16
     STR_SIZE = 64
     if len(file_md5) != MD5_SIZE:
@@ -101,7 +144,7 @@ def build_sga_header_buffer(file_md5: bytes, name: str, header_md5: bytes, heade
         _pad_bytes(name.encode("utf-16-le"), STR_SIZE * 2),  # 128
         header_md5,  # 16
         header_size.to_bytes(4, "little", signed=False),  # 4
-        data_pos.to_bytes(4, "little", signed=False)  # 4
+        data_pos.to_bytes(4, "little", signed=False),  # 4
     ]
     return b"".join(parts)
 
@@ -125,17 +168,23 @@ class SgaHeaderData:
     data_size: None = None
 
     def build_buffer(self) -> bytes:
-        return build_sga_header_buffer(self.file_md5, self.name, self.header_md5, self.header_size, self.data_pos)
+        return build_sga_header_buffer(
+            self.file_md5, self.name, self.header_md5, self.header_size, self.data_pos
+        )
 
 
 __TEST_SGA_HEADER_DATA = [
-    SgaHeaderData(b"FILE_MD5\0\0\0\0\0\0\0\0", "John Travolta", b"HEADER_MD5\0\0\0\0\0\0", 867, 5309),
+    SgaHeaderData(
+        b"FILE_MD5\0\0\0\0\0\0\0\0",
+        "John Travolta",
+        b"HEADER_MD5\0\0\0\0\0\0",
+        867,
+        5309,
+    ),
     SgaHeaderData(_FILE_MD5_EIGEN[0:16], "Joe Pecci", _TOC_MD5_EIGEN[0:16], 0, 12345),
     SgaHeaderData(_FILE_MD5_EIGEN[16:32], "Adam West", _TOC_MD5_EIGEN[16:32], 12345, 0),
 ]
-_TEST_SGA_HEADER_DATA = [
-    (data, data.build_buffer()) for data in __TEST_SGA_HEADER_DATA
-]
+_TEST_SGA_HEADER_DATA = [(data, data.build_buffer()) for data in __TEST_SGA_HEADER_DATA]
 
 
 @pytest.mark.parametrize(["data", "buffer"], _TEST_SGA_HEADER_DATA)
@@ -213,7 +262,9 @@ class TestSgaHeaderV2:
                 writer.toc_pos = data.header_pos
                 assert False, "Expected an error!"
             except RelicToolError as e:
-                assert e.args[0] == "Header Pos is fixed in SGA v2!"  # TODO, catch a specific error instead of checking msg
+                assert (
+                    e.args[0] == "Header Pos is fixed in SGA v2!"
+                )  # TODO, catch a specific error instead of checking msg
 
     def test_read_data_size(self, data: SgaHeaderData, buffer: bytes):
         with BytesIO(buffer) as stream:
@@ -228,7 +279,9 @@ class TestSgaHeaderV2:
                 writer.data_size = data.data_size
                 assert False, "Expected an error!"
             except RelicToolError as e:
-                assert e.args[0] == "Data Size is not specified in SGA v2!"  # TODO, catch a specific error instead of checking msg
+                assert (
+                    e.args[0] == "Data Size is not specified in SGA v2!"
+                )  # TODO, catch a specific error instead of checking msg
 
 
 # SGA TOC HEADER = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -242,15 +295,22 @@ class SgaTocHeaderPointerData:
         return self.offset, self.count
 
 
-def build_sga_toc_header_buffer(drive: SgaTocHeaderPointerData, folder: SgaTocHeaderPointerData, file: SgaTocHeaderPointerData, name: SgaTocHeaderPointerData) -> bytes:
+def build_sga_toc_header_buffer(
+    drive: SgaTocHeaderPointerData,
+    folder: SgaTocHeaderPointerData,
+    file: SgaTocHeaderPointerData,
+    name: SgaTocHeaderPointerData,
+) -> bytes:
     POS_SIZE = 4
     COUNT_SIZE = 2
     parts = []
     for ptr in [drive, folder, file, name]:
-        parts.extend([
-            ptr.offset.to_bytes(POS_SIZE, "little", signed=False),  # 4
-            ptr.count.to_bytes(COUNT_SIZE, "little", signed=False)  # 2
-        ])
+        parts.extend(
+            [
+                ptr.offset.to_bytes(POS_SIZE, "little", signed=False),  # 4
+                ptr.count.to_bytes(COUNT_SIZE, "little", signed=False),  # 2
+            ]
+        )
     return b"".join(parts)
 
 
@@ -269,13 +329,30 @@ class SgaTocHeaderData:
     name: SgaTocHeaderPointerData
 
     def build_buffer(self) -> bytes:
-        return build_sga_toc_header_buffer(self.drive, self.folder, self.file, self.name)
+        return build_sga_toc_header_buffer(
+            self.drive, self.folder, self.file, self.name
+        )
 
 
 __TEST_SGA_TOC_HEADER_DATA = [
-    SgaTocHeaderData(SgaTocHeaderPointerData(0, 1), SgaTocHeaderPointerData(2, 3), SgaTocHeaderPointerData(3, 4), SgaTocHeaderPointerData(5, 6)),
-    SgaTocHeaderData(SgaTocHeaderPointerData(10, 1), SgaTocHeaderPointerData(20, 3), SgaTocHeaderPointerData(30, 4), SgaTocHeaderPointerData(50, 6)),
-    SgaTocHeaderData(SgaTocHeaderPointerData(_UINT32_M, _UINT16_M), SgaTocHeaderPointerData(_UINT32_M, _UINT16_M), SgaTocHeaderPointerData(_UINT32_M, _UINT16_M), SgaTocHeaderPointerData(_UINT32_M, _UINT16_M)),
+    SgaTocHeaderData(
+        SgaTocHeaderPointerData(0, 1),
+        SgaTocHeaderPointerData(2, 3),
+        SgaTocHeaderPointerData(3, 4),
+        SgaTocHeaderPointerData(5, 6),
+    ),
+    SgaTocHeaderData(
+        SgaTocHeaderPointerData(10, 1),
+        SgaTocHeaderPointerData(20, 3),
+        SgaTocHeaderPointerData(30, 4),
+        SgaTocHeaderPointerData(50, 6),
+    ),
+    SgaTocHeaderData(
+        SgaTocHeaderPointerData(_UINT32_M, _UINT16_M),
+        SgaTocHeaderPointerData(_UINT32_M, _UINT16_M),
+        SgaTocHeaderPointerData(_UINT32_M, _UINT16_M),
+        SgaTocHeaderPointerData(_UINT32_M, _UINT16_M),
+    ),
 ]
 _TEST_SGA_TOC_HEADER_DATA = [
     (data, data.build_buffer()) for data in __TEST_SGA_TOC_HEADER_DATA
@@ -284,7 +361,6 @@ _TEST_SGA_TOC_HEADER_DATA = [
 
 @pytest.mark.parametrize(["data", "buffer"], _TEST_SGA_TOC_HEADER_DATA)
 class TestSgaTocHeaderV2:
-
     @contextmanager
     def _get_interpreter(self, buffer: Optional[bytes] = None):
         if buffer is None:
@@ -292,18 +368,26 @@ class TestSgaTocHeaderV2:
         with BytesIO(buffer) as stream:
             yield SgaTocHeaderV2(stream)
 
-    def _test_count_write(self, pointer: SgaTocHeader.TablePointer, data: SgaTocHeaderPointerData):
+    def _test_count_write(
+        self, pointer: SgaTocHeader.TablePointer, data: SgaTocHeaderPointerData
+    ):
         pointer.count = data.count
         assert pointer.count == data.count
 
-    def _test_count_read(self, pointer: SgaTocHeader.TablePointer, data: SgaTocHeaderPointerData):
+    def _test_count_read(
+        self, pointer: SgaTocHeader.TablePointer, data: SgaTocHeaderPointerData
+    ):
         assert pointer.count == data.count
 
-    def _test_offset_write(self, pointer: SgaTocHeader.TablePointer, data: SgaTocHeaderPointerData):
+    def _test_offset_write(
+        self, pointer: SgaTocHeader.TablePointer, data: SgaTocHeaderPointerData
+    ):
         pointer.offset = data.offset
         assert pointer.offset == data.offset
 
-    def _test_offset_read(self, pointer: SgaTocHeader.TablePointer, data: SgaTocHeaderPointerData):
+    def _test_offset_read(
+        self, pointer: SgaTocHeader.TablePointer, data: SgaTocHeaderPointerData
+    ):
         assert pointer.offset == data.offset
 
     # DRIVE
@@ -376,7 +460,15 @@ class TestSgaTocHeaderV2:
 
 
 # SGA TOC DRIVE = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-def build_sga_toc_drive_buffer(alias: str, name: str, first_folder: int, last_folder: int, first_file: int, last_file: int, root_folder) -> bytes:
+def build_sga_toc_drive_buffer(
+    alias: str,
+    name: str,
+    first_folder: int,
+    last_folder: int,
+    first_file: int,
+    last_file: int,
+    root_folder,
+) -> bytes:
     STR_SIZE = 64
     STR_ENC = "ascii"
     LE = "little"
@@ -398,7 +490,7 @@ def build_sga_toc_drive_buffer(alias: str, name: str, first_folder: int, last_fo
         _enc_num(last_folder),  # 2
         _enc_num(first_file),  # 2
         _enc_num(last_file),  # 2
-        _enc_num(root_folder)  # 2
+        _enc_num(root_folder),  # 2
     ]
     return b"".join(parts)
 
@@ -422,12 +514,22 @@ class SgaTocDriveData:
     root_folder: int
 
     def build_buffer(self) -> bytes:
-        return build_sga_toc_drive_buffer(self.alias, self.name, self.first_folder, self.last_folder, self.first_file, self.last_file, self.root_folder)
+        return build_sga_toc_drive_buffer(
+            self.alias,
+            self.name,
+            self.first_folder,
+            self.last_folder,
+            self.first_file,
+            self.last_file,
+            self.root_folder,
+        )
 
 
 __TEST_SGA_TOC_DRIVE_DATA = [
     SgaTocDriveData("data", "Alpha", 0, 1, 2, 3, 0),
-    SgaTocDriveData("attrib", "Bravo", _UINT16_M, _UINT16_M, _UINT16_M, _UINT16_M, _UINT16_M),
+    SgaTocDriveData(
+        "attrib", "Bravo", _UINT16_M, _UINT16_M, _UINT16_M, _UINT16_M, _UINT16_M
+    ),
     SgaTocDriveData("test", "Charlie", 0, 0, 0, 0, 0),
     SgaTocDriveData("", "", 8, 6, 7, 5, 3),
     SgaTocDriveData("", "Echo", 0, 9, 8, 6, 7),
@@ -529,7 +631,13 @@ class TestSgaTocDriveV2:
 
 
 # SGA TOC FOLDER = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-def build_sga_toc_folder_buffer(name_offset: int, first_folder: int, last_folder: int, first_file: int, last_file: int) -> bytes:
+def build_sga_toc_folder_buffer(
+    name_offset: int,
+    first_folder: int,
+    last_folder: int,
+    first_file: int,
+    last_file: int,
+) -> bytes:
     LE = "little"
     SIGNED = False
     NUM_SIZE = 2
@@ -564,7 +672,13 @@ class SgaTocFolderData:
     last_file: int
 
     def build_buffer(self) -> bytes:
-        return build_sga_toc_folder_buffer(self.name_offset, self.first_folder, self.last_folder, self.first_file, self.last_file)
+        return build_sga_toc_folder_buffer(
+            self.name_offset,
+            self.first_folder,
+            self.last_folder,
+            self.first_file,
+            self.last_file,
+        )
 
 
 __TEST_SGA_TOC_FOLDER_DATA = [
@@ -647,7 +761,15 @@ class TestSgaTocFolderV2:
 
 
 # SGA TOC FILE = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-def build_sga_toc_file_buffer(name_offset: int, storage_type: StorageType, data_offset: int, comp_size: int, decomp_size: int, *, dow_format: bool = True) -> bytes:
+def build_sga_toc_file_buffer(
+    name_offset: int,
+    storage_type: StorageType,
+    data_offset: int,
+    comp_size: int,
+    decomp_size: int,
+    *,
+    dow_format: bool = True,
+) -> bytes:
     _STORAGE_TYPE = {  # Too lazy to do flag shifting properly # TODO do this properly; it just bit me, and it will bite me again later
         StorageType.STORE: 0,
         StorageType.BUFFER_COMPRESS: 32,
@@ -691,15 +813,36 @@ class SgaTocFileData:
     is_dow: bool = True
 
     def build_buffer(self) -> bytes:
-        return build_sga_toc_file_buffer(self.name_offset, self.storage_type, self.data_offset, self.compressed_size, self.decompressed_size, dow_format=self.is_dow)
+        return build_sga_toc_file_buffer(
+            self.name_offset,
+            self.storage_type,
+            self.data_offset,
+            self.compressed_size,
+            self.decompressed_size,
+            dow_format=self.is_dow,
+        )
 
 
 __TEST_SGA_TOC_FILE_DATA = [
     SgaTocFileData(0, StorageType.STORE, 1, 2, 3, is_dow=True),
     SgaTocFileData(4, StorageType.BUFFER_COMPRESS, 5, 6, 7, is_dow=True),
-    SgaTocFileData(_UINT32_M, StorageType.STREAM_COMPRESS, _UINT32_M, _UINT32_M, _UINT32_M, is_dow=True),
+    SgaTocFileData(
+        _UINT32_M,
+        StorageType.STREAM_COMPRESS,
+        _UINT32_M,
+        _UINT32_M,
+        _UINT32_M,
+        is_dow=True,
+    ),
     SgaTocFileData(10, StorageType.STORE, 11, 12, 13, is_dow=False),
-    SgaTocFileData(_UINT32_M, StorageType.BUFFER_COMPRESS, _UINT32_M, _UINT32_M, _UINT32_M, is_dow=False),
+    SgaTocFileData(
+        _UINT32_M,
+        StorageType.BUFFER_COMPRESS,
+        _UINT32_M,
+        _UINT32_M,
+        _UINT32_M,
+        is_dow=False,
+    ),
     SgaTocFileData(25, StorageType.STREAM_COMPRESS, 83, 63, 27, is_dow=False),
 ]
 _TEST_SGA_TOC_FILE_DATA = [
@@ -709,13 +852,16 @@ _TEST_SGA_TOC_FILE_DATA = [
 
 @pytest.mark.parametrize(["data", "buffer"], _TEST_SGA_TOC_FILE_DATA)
 class TestSgaTocFileV2:
-
     @contextmanager
-    def _get_interpreter(self, buffer: Optional[bytes] = None, dow_format: bool = True) -> _SgaTocFileV2:
+    def _get_interpreter(
+        self, buffer: Optional[bytes] = None, dow_format: bool = True
+    ) -> _SgaTocFileV2:
         if buffer is None:
             buffer = build_sga_toc_file_empty_buffer(dow_format)
         with BytesIO(buffer) as stream:
-            yield SgaTocFileV2Dow(stream) if dow_format else SgaTocFileV2ImpCreatures(stream)
+            yield SgaTocFileV2Dow(stream) if dow_format else SgaTocFileV2ImpCreatures(
+                stream
+            )
 
     def test_read_name_offset(self, data: SgaTocFileData, buffer: bytes):
         with self._get_interpreter(buffer, dow_format=data.is_dow) as interpreter:

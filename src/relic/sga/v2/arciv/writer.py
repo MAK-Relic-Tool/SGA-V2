@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from io import StringIO
 from os import PathLike
-from typing import Optional, Iterable, Union, List, Dict, Any, TextIO
+from typing import Optional, Iterable, Union, List, Dict, Any, TextIO, Iterator
 
 
 @dataclass
@@ -38,7 +38,7 @@ class ArcivWriter:
         self._indent_level = 0
 
     @contextmanager
-    def _enter_indent(self) -> None:
+    def _enter_indent(self) -> Iterator:
         self._indent_level += 1
         yield None
         self._indent_level -= 1
@@ -55,7 +55,7 @@ class ArcivWriter:
             and self._settings.has_indent
             and len(values) > 0
             and self._indent_level > 0
-        ):  # Dont indent if we only want comma / newline
+        ):  # Don't indent if we only want comma / newline
             yield self._indent_level * self._settings.indent  # type: ignore
         for i, v in enumerate(values):
             yield v
@@ -178,16 +178,16 @@ class ArcivWriter:
         )
         # yield from self._formatted(newline=True)
 
-    def tokens(self, data: Any) -> Iterable[str]:
+    def tokens(self, data: dict) -> Iterable[str]:
         for key, value in data.items():
             yield from self._format_key_value(key, value)
 
-    def write(self, data: Any) -> str:
+    def write(self, data: dict) -> str:
         with StringIO() as fp:
             self.writef(fp, data)
             return fp.getvalue()
 
-    def writef(self, fp: TextIO, data: Any) -> None:
+    def writef(self, fp: TextIO, data: dict) -> None:
         for token in self.tokens(data):
             fp.write(token)
 

@@ -37,7 +37,7 @@ def _repr_name(t: Any):
     return ".".join([module, klass.__qualname__])
 
 
-def _repr_obj(self, *args: str, name: str = None, **kwargs):
+def _repr_obj(self, *args: str, name: Optional[str] = None, **kwargs) -> str:
     klass_name = _repr_name(self)
     for arg in args:
         kwargs[arg] = getattr(self, arg)
@@ -512,7 +512,13 @@ class SgaFileV2(SgaFile):
         self._toc = SgaTocV2(self._header_window, game=game_format)
 
     def __verify(
-        self, cached: bool, error: bool, hasher: md5, expected: bytes, cache_name: str
+        self,
+        cached: bool,
+        error: bool,
+        hasher: Hasher,
+        hash_kwargs: Dict[str, Any],
+        expected: bytes,
+        cache_name: str,
     ) -> bool:
         if (
             self._serializer.stream.writable()
@@ -520,11 +526,13 @@ class SgaFileV2(SgaFile):
             or not cached
             or not hasattr(self, cache_name)
         ):
-            args: Tuple[BinaryIO, bytes] = self._serializer.stream, expected
+            kwargs = hash_kwargs
+            kwargs["stream"] = self._serializer.stream
+            kwargs["expected"] = expected
             if not error:
-                result = hasher.check(*args)
+                result = hasher.check(*kwargs)
             else:
-                hasher.validate(*args)
+                hasher.validate(**kwargs)
                 result = True
             setattr(self, cache_name, result)
 
@@ -532,29 +540,26 @@ class SgaFileV2(SgaFile):
 
     def verify_file(self, cached: bool = True, error: bool = False) -> bool:
         NAME = "__verified_file"
-        hasher = md5(
-            self._meta.toc_pos,
-            eigen=_FILE_MD5_EIGEN,
-        )
         return self.__verify(
             cached=cached,
             error=error,
-            hasher=hasher,
+            hasher=md5,
+            hash_kwargs={"start": self._meta.toc_pos, "eigen": _FILE_MD5_EIGEN},
             expected=self._meta.file_md5,
             cache_name=NAME,
         )
 
     def verify_header(self, cached: bool = True, error: bool = False) -> bool:
         NAME = "__verified_file"
-        hasher = md5(
-            self._meta.toc_pos,
-            self._meta.toc_size,
-            eigen=_TOC_MD5_EIGEN,
-        )
         return self.__verify(
             cached=cached,
             error=error,
-            hasher=hasher,
+            hasher=md5,
+            hash_kwargs={
+                "start": self._meta.toc_pos,
+                "size": self._meta.toc_size,
+                "eigen": _TOC_MD5_EIGEN,
+            },
             expected=self._meta.toc_md5,
             cache_name=NAME,
         )

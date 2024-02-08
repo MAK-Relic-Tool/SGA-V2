@@ -2,7 +2,7 @@ import os.path
 from typing import BinaryIO, List, Optional
 
 from fs.opener.parse import ParseResult
-from relic.sga.core import Version
+from relic.sga.core.definitions import Version
 from relic.sga.core.essencefs.opener import EssenceFsOpenerPlugin
 
 from relic.sga.v2.definitions import version
@@ -10,7 +10,7 @@ from relic.sga.v2.essencefs.definitions import EssenceFSV2
 from relic.sga.v2.serialization import SgaV2GameFormat
 
 
-def _guess_format_from_name(name: str):
+def _guess_format_from_name(name: str) -> Optional[SgaV2GameFormat]:
     if "Dawn of War" in name:
         return SgaV2GameFormat.DawnOfWar
     if "Impossible Creatures" in name:
@@ -21,7 +21,7 @@ def _guess_format_from_name(name: str):
 class EssenceFSV2Opener(EssenceFsOpenerPlugin[EssenceFSV2]):
     _PROTO_GENERIC_V2 = "sga-v2"
     _PROTO_DOW = "sga-dow"
-    _PROTO_IC = "sga-dow"
+    _PROTO_IC = "sga-ic"
     _PROTO2GAME = {
         _PROTO_DOW: SgaV2GameFormat.DawnOfWar,
         _PROTO_IC: SgaV2GameFormat.ImpossibleCreatures,
@@ -69,7 +69,7 @@ class EssenceFSV2Opener(EssenceFsOpenerPlugin[EssenceFSV2]):
 
         fmode = "w+b" if writeable else "rb"
         try:
-            handle: BinaryIO = open(parse_result.resource, fmode)
+            handle: BinaryIO = open(parse_result.resource, fmode)  # type: ignore
             return EssenceFSV2(
                 handle, parse_handle=exists, game=game_format, editable=writeable
             )

@@ -2,7 +2,7 @@ Archive = {
 	ArchiveHeader = {
 		ArchiveName = "example-10-26-2023",
 	},
-	TOCList = {		 
+	TOCList = {
 		{
 			RootFolder = {
 				Files = {},
@@ -17,7 +17,7 @@ Archive = {
 							folder = "Samples",
 							path = [[<cwd>\Root\Samples\]],
 						},
-						Folders =  
+						Folders =
 						{
 							{
 								Files = {
@@ -56,12 +56,12 @@ Archive = {
 					},
 				},
 			},
-			TOCHeader =  
+			TOCHeader =
 			{
 				Alias = "data",
 				Name = "testdata",
 				RootPath = [[<cwd>\Root\]],
-				Storage =  
+				Storage =
 				{
 					{
 						MaxSize = -1,
@@ -69,10 +69,9 @@ Archive = {
 						Storage = 0,
 						Wildcard = "*.*",
 					},
-					
+
 				},
 			},
 		},
 	},
 }
-

@@ -1,6 +1,8 @@
-[
-  "Samples/Sample Strings/auto.txt",
-  "Samples/Sample Strings/buffer.txt",
-  "Samples/Sample Strings/store.txt",
-  "Samples/Sample Strings/stream.txt"
-]
+{
+	"files":{
+		"Samples/Sample Strings/auto.txt":{"modified":1698365963,"crc":1507363257},
+		"Samples/Sample Strings/buffer.txt":{"modified":1698363889,"crc":2432983363},
+		"Samples/Sample Strings/store.txt":{"modified":1698363867,"crc":2801447666},
+		"Samples/Sample Strings/stream.txt":{"modified":1698363889,"crc":2432983363}
+	}
+}

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import itertools
 import os
 import time
 import zlib
@@ -14,6 +15,8 @@ from typing import (
     BinaryIO,
     List,
     Iterable,
+    Type,
+    Iterator,
     Optional,
     Mapping,
     Union,
@@ -200,7 +203,7 @@ def _repr_name(t: Any):
     return ".".join([module, klass.__qualname__])
 
 
-def _repr_obj(self, *args: str, name: str = None, **kwargs):
+def _repr_obj(self, *args: str, name: Optional[str] = None, **kwargs):
     klass_name = _repr_name(self)
     for arg in args:
         kwargs[arg] = getattr(self, arg)
@@ -325,15 +328,16 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
             yield self._data_info.data(decompress=True)
 
     def verify_crc32(self, error: bool) -> bool:
-        hasher = crc32(start=0)
         # Locking should be handled by opening file, no need to lock here
         with self.openbin("r") as stream:
             expected = self._data_info.header.crc32
             if error:
-                hasher.validate(stream, expected, name=f"File '{self.name}' CRC32")
+                crc32.validate(
+                    stream, start=0, expected=expected, name=f"File '{self.name}' CRC32"
+                )
                 return True
 
-            return hasher.check(stream, expected)
+            return crc32.check(stream, expected, start=0)
 
     def recalculate_crc32(self):
         raise RelicToolError(
@@ -822,7 +826,7 @@ class SgaFsFolderV2(_SgaFsFolderV2):
     def scandir(self) -> Iterable[str]:
         return self._backing.scandir()
 
-    def get_child(self, part):
+    def get_child(self, part) -> Optional[Union[_SgaFsFileV2, _SgaFsFolderV2]]:
         return self._backing.get_child(part)
 
     def remove_file(self, name: str):
@@ -1229,7 +1233,7 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
         super().__init__(game_format or sga._game_format)
         self.filesystem = sga
 
-    def write_fs_tree_names(self, folder: _SgaFsFolderV2, path: str = None):
+    def write_fs_tree_names(self, folder: _SgaFsFolderV2, path: Optional[str] = None):
         # Writes file names in manner mostly consistent with default SGA archives (file names I believe are written in the order that the .arciv file specifies, because we intermediate with pyfilesystem, we can't 1-1 this)
         #   Additionally; this now doesn't write file names, because file names are ALWAYS at the end of the block
         #       We could write them after writing the file tree; but this wouldn't work with multi-drive sgas
@@ -1374,7 +1378,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         filesystem: Optional[FS],
         arciv: Arciv,
         game_format: Optional[SgaV2GameFormat] = None,
-        filesystem_root: str = None,
+        filesystem_root: Optional[str] = None,
     ):
         super().__init__(game_format or SgaV2GameFormat.DawnOfWar)
         self.filesystem = filesystem
@@ -1457,7 +1461,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             self.write_arciv_file_names(folder, drive)
 
     def write_arciv_folder_names(
-        self, folder: TocFolderItem, drive: TocItem, path: str = None
+        self, folder: TocFolderItem, drive: TocItem, path: Optional[str] = None
     ):
         name = folder.FolderInfo.folder
         parent_full_path = (
@@ -1994,7 +1998,7 @@ class SgaFsV2Assembler:
 
     @classmethod
     def assemble_file_tree(
-        cls, header: TocHeader, file: TocFileItem, path: str = None
+        cls, header: TocHeader, file: TocFileItem, path: Optional[str] = None
     ) -> Iterable[Tuple[str, str, StorageType]]:
         # ALias is not included in the path
         name = file.File  # File is name; confusingly
@@ -2010,7 +2014,7 @@ class SgaFsV2Assembler:
 
     @classmethod
     def assemble_folder_tree(
-        cls, header: TocHeader, folder: TocFolderItem, path: str = None
+        cls, header: TocHeader, folder: TocFolderItem, path: Optional[str] = None
     ) -> Iterable[Tuple[str, str, StorageType]]:
         # ALias is not included in the path
         name = folder.FolderInfo.folder  # folder is name; confusingly
@@ -2255,7 +2259,9 @@ class EssenceFSV2(EssenceFS):
         return list(self._drives.values())
 
     @staticmethod
-    def _getnode_from_drive(drive: _SgaFsDriveV2, path: str, exists: bool = False):
+    def _getnode_from_drive(
+        drive: _SgaFsDriveV2, path: str, exists: bool = False
+    ) -> Optional[Union[_SgaFsFileV2, _SgaFsFolderV2]]:
         current = drive.root
 
         # if path == SgaPathResolver.ROOT:
@@ -2289,15 +2295,15 @@ class EssenceFSV2(EssenceFS):
                 continue
         raise fs.errors.ResourceNotFound(path)
 
-    def getinfo(self, path, namespaces=None):
-        node = self._getnode(path, exists=True)
+    def getinfo(self, path, namespaces=None) -> Info:
+        node: Union[_SgaFSFileV2, _SgaFsFolderV2] = self._getnode(path, exists=True)  # type: ignore
         return node.getinfo(namespaces)
 
-    def listdir(self, path):
+    def listdir(self, path: str) -> List[str]:
         node: _SgaFsFolderV2 = self._getnode(path, exists=True)
         if not node.getinfo("basic").get("basic", "is_dir"):
             raise fs.errors.DirectoryExpected(path)
-        return node.scandir()
+        return list(node.scandir())
 
     def _try_enter_parent(self, path: str) -> Tuple[_SgaFsFolderV2, str]:
         alias, _path = SgaPathResolver.parse(path)
@@ -2316,7 +2322,7 @@ class EssenceFSV2(EssenceFS):
 
         return parent, _child
 
-    def makedir(self, path, permissions=None, recreate=False):
+    def makedir(self, path, permissions=None, recreate=False) -> SubFS[EssenceFSV2]:
         alias, _path = SgaPathResolver.parse(path)
         if alias is not None and _path == SgaPathResolver.ROOT:  # Make Drive
             try:
@@ -2343,7 +2349,7 @@ class EssenceFSV2(EssenceFS):
 
         return self.opendir(path)
 
-    def makedirs(self, path, permissions=None, recreate=False):
+    def makedirs(self, path, permissions=None, recreate=False) -> SubFS[EssenceFSV2]:
         alias, _path = SgaPathResolver.parse(path)
         alias_path = SgaPathResolver.build(alias=alias)
 
@@ -2371,7 +2377,7 @@ class EssenceFSV2(EssenceFS):
             current = current.makedir(part, permissions, recreate)
         return current
 
-    def openbin(self, path, mode="r", buffering=-1, **options):
+    def openbin(self, path, mode="r", buffering=-1, **options) -> BinaryIO:
         _mode = Mode(mode)
         parent, child = self._try_enter_parent(path)
         child_node: _SgaFsFileV2 = parent.get_child(child)
@@ -2386,7 +2392,7 @@ class EssenceFSV2(EssenceFS):
 
         return child_node.openbin(mode)
 
-    def remove(self, path):
+    def remove(self, path) -> None:
         _, path = SgaPathResolver.parse(path)
         if path == SgaPathResolver.ROOT:  # special case; removing root
             raise fs.errors.FileExpected(path)
@@ -2401,7 +2407,7 @@ class EssenceFSV2(EssenceFS):
             fe_err.path = path
             raise
 
-    def removedir(self, path):
+    def removedir(self, path) -> None:
         _, path = SgaPathResolver.parse(path)
         if path == SgaPathResolver.ROOT:  # special case; removing root
             raise fs.errors.RemoveRootError(path)
@@ -2416,16 +2422,16 @@ class EssenceFSV2(EssenceFS):
             de_err.path = path
             raise
 
-    def setinfo(self, path, info):
-        node = self._getnode(path, exists=True)
+    def setinfo(self, path: str, info: Mapping[str, Mapping[str, object]]) -> None:
+        node: Union[_SgaFSFileV2, _SgaFSFolderV2] = self._getnode(path, exists=True)  # type: ignore
         node.setinfo(info)
 
-    def iterate_fs(self) -> Tuple[str, SubFS[EssenceFSV2]]:
+    def iterate_fs(self) -> Iterator[Tuple[str, FS]]:
         for alias, _ in self._drives.items():
             yield alias, self.opendir(SgaPathResolver.build(alias=alias))
 
     def verify_file_crc(self, path: str, error: bool = False) -> bool:
-        node: SgaFsFileV2 = self._getnode(path, exists=True)
+        node: SgaFsFileV2 = self._getnode(path, exists=True)  # type: ignore
         if node.getinfo("basic").is_dir:
             raise fs.errors.FileExists(path)
         return node.verify_crc32(error)
@@ -2435,10 +2441,12 @@ class EssenceFSV2(EssenceFS):
             self._stream.close()
         super().close()
 
-    def __enter__(self):
+    def __enter__(self) -> EssenceFS:
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(
+        self, exc_type: Optional[Type[BaseException]], exc_val: Any, exc_tb: Any
+    ) -> None:
         if self._update_stream:
             self.save(safe_write=True)
         self.close()
@@ -2447,7 +2455,7 @@ class EssenceFSV2(EssenceFS):
     def scandir(
         self,
         path: str,
-        namespaces: Optional[List[str]] = None,
+        namespaces: Optional[Collection[str]] = None,
         page: Optional[Tuple[int, int]] = None,
     ) -> Iterator[Info]:
         alias, root = SgaPathResolver.parse(path)

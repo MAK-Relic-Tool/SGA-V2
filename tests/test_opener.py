@@ -11,6 +11,7 @@ from relic.sga.core.essencefs.definitions import EssenceFS
 from relic.sga.core.serialization import VersionSerializer
 
 from relic.sga import v2
+
 #
 # _path = Path(__file__).parent
 # try:
@@ -33,13 +34,14 @@ def v2_scan_directory(root_dir: str) -> Iterable[str]:
     root_directory = Path(root_dir)
     for path_object in root_directory.glob("**/*.sga"):
         with path_object.open("rb") as handle:
-            if MAGIC_WORD.check(handle,advance=True):
+            if MAGIC_WORD.check(handle, advance=True):
                 continue
             version = VersionSerializer.read(handle)
             if version != v2.version:
                 continue
             # if path_object.with_suffix(".json").exists():  # ensure expected results file is also present
             yield str(path_object)
+
 
 #
 # v2_test_files: List[str] = []
@@ -61,6 +63,8 @@ class TestEssenceFSOpener:
     def test_read(self, v2_file_path):
         with fs.open_fs(f"sga://{v2_file_path}") as sga:
             pass
+
+
 #
 #
 # # Hack to get "SampleSGA-v2" from the sample data

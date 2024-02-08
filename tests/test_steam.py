@@ -31,7 +31,7 @@ if games_path is None:
 
 _root = Path(games_path)
 _installed: Dict[str, List[str]] = {
-    game: [str(sga) for sga in (_root / game).rglob("*.sga-backup")] for game in _ALLOWED_GAMES
+    game: [str(sga) for sga in (_root / game).rglob("*.sga")] for game in _ALLOWED_GAMES
 }
 
 _dow_dc_sgas = _installed[_DOW_DC]
@@ -39,7 +39,7 @@ _dow_gold_sgas = _installed[_DOW_DC]
 _dow_ss_sgas = _installed[_DOW_DC]
 _imp_creatures_sgas = _installed[_IMP_CREATURES]
 
-QUICK = True  # skips slower tests like file MD5 checksums and file CRC checks
+QUICK = False  # skips slower tests like file MD5 checksums and file CRC checks
 
 
 @contextmanager
@@ -59,7 +59,6 @@ class GameTests:
         with fs.open_fs(f"sga://{path}"):
             ...
 
-
     @pytest.mark.skipif(QUICK, reason="Quick mode, skipping slow tests")
     def test_verify_header(self, path: str):
         with _open_sga(path, verify_header=True, in_memory=False):
@@ -77,9 +76,7 @@ class GameTests:
                 result = sga.verify_file_crc(file)
                 assert result is True, file
 
-
-
-    def test_repack(self, path:str):
+    def test_repack(self, path: str):
         game_format: SgaV2GameFormat = None
         if "Dawn of War" in path:
             game_format = SgaV2GameFormat.DawnOfWar
@@ -91,12 +88,12 @@ class GameTests:
                 dst_sga = EssenceFSV2(handle, parse_handle=True, game=game_format)
 
                 for step in src_sga.walk():
-                    step:Step
+                    step: Step
 
                     assert dst_sga.exists(step.path), step.path
                     with dst_sga.opendir(step.path) as dst_path:
                         for dir in step.dirs:
-                            dir:Info
+                            dir: Info
                             assert dst_path.exists(dir.name), dir.name
                         for file in step.files:
                             file: Info
@@ -104,9 +101,16 @@ class GameTests:
                             with src_sga.opendir(step.path) as src_path:
                                 with src_path.openbin(file.name) as src_file:
                                     with dst_path.openbin(file.name) as dst_file:
-                                        for i, (src_chunk, dst_chunk) in enumerate(zip(read_chunks(src_file),read_chunks(dst_file))):
-                                            assert src_chunk == dst_chunk, (file.name, f"Chunk '{i}'")
-
+                                        for i, (src_chunk, dst_chunk) in enumerate(
+                                            zip(
+                                                read_chunks(src_file),
+                                                read_chunks(dst_file),
+                                            )
+                                        ):
+                                            assert src_chunk == dst_chunk, (
+                                                file.name,
+                                                f"Chunk '{i}'",
+                                            )
 
 
 @pytest.mark.skipif(len(_dow_dc_sgas) == 0, reason=f"'{_DOW_DC}' is not installed.")
@@ -133,4 +137,3 @@ class TestDawnOfWarSoulstorm(GameTests):
 @pytest.mark.parametrize("path", _imp_creatures_sgas)
 class TestImpossibleCreatures(GameTests):
     ...
-
