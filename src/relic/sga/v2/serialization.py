@@ -31,13 +31,13 @@ from relic.sga.core.serialization import (
 )
 
 
-def _repr_name(t: Any):
+def _repr_name(t: Any) -> str:
     klass = t.__class__
     module = klass.__module__
     return ".".join([module, klass.__qualname__])
 
 
-def _repr_obj(self, *args: str, name: Optional[str] = None, **kwargs) -> str:
+def _repr_obj(self: Any, *args: str, name: Optional[str] = None, **kwargs: Any) -> str:
     klass_name = _repr_name(self)
     for arg in args:
         kwargs[arg] = getattr(self, arg)
@@ -77,7 +77,7 @@ class RelicDateTimeSerializer:
         return cls.unix2datetime(value)
 
     @classmethod
-    def unix2datetime(cls, value: Union[int, float]):
+    def unix2datetime(cls, value: Union[int, float]) -> datetime:
         return datetime.fromtimestamp(value, timezone.utc)
 
     @classmethod
@@ -85,7 +85,7 @@ class RelicDateTimeSerializer:
         return value.replace(tzinfo=timezone.utc).timestamp()
 
 
-def _next(offset, size):
+def _next(offset: int, size: int) -> int:
     return offset + size
 
 
@@ -112,7 +112,7 @@ class SgaHeaderV2(SgaHeader):
         return self._serializer.read_bytes(*self._FILE_MD5)
 
     @file_md5.setter
-    def file_md5(self, value: bytes):
+    def file_md5(self, value: bytes) -> None:
         self._serializer.write_bytes(value, *self._FILE_MD5)
 
     @property
@@ -122,7 +122,7 @@ class SgaHeaderV2(SgaHeader):
         )
 
     @name.setter
-    def name(self, value: str):
+    def name(self, value: str) -> None:
         self._serializer.c_string.write(
             value, *self._NAME, encoding=self._NAME_ENC, padding=self._NAME_PAD
         )
@@ -134,7 +134,7 @@ class SgaHeaderV2(SgaHeader):
         return self._serializer.read_bytes(*self._TOC_MD5)
 
     @toc_md5.setter
-    def toc_md5(self, value: bytes):
+    def toc_md5(self, value: bytes) -> None:
         self._serializer.write_bytes(value, *self._TOC_MD5)
 
     @property
@@ -146,7 +146,7 @@ class SgaHeaderV2(SgaHeader):
         # pass
 
     @toc_pos.setter
-    def toc_pos(self, value: bytes):
+    def toc_pos(self, value: bytes) -> None:
         raise RelicToolError(
             "Header Pos is fixed in SGA v2!"
         )  # TODO raise an explicit `not writable` error

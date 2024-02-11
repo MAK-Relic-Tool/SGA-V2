@@ -31,6 +31,7 @@ from fs import ResourceType, open_fs
 from fs.base import FS
 from fs.info import Info
 from fs.mode import Mode
+from fs.permissions import Permissions
 from fs.subfs import SubFS
 from relic.core.errors import RelicToolError
 from relic.core.lazyio import BinaryWindow, read_chunks, chunk_copy, BinaryWrapper
@@ -2170,7 +2171,7 @@ class EssenceFSV2(EssenceFS):
             if in_memory is True:
                 self._unlazy()
 
-    def _unlazy(self):
+    def _unlazy(self) -> None:
         """
         Converts the filesystem into an in-memory filesystem. Useful for separating the underlying file from the filesystem instance.
         """
@@ -2186,10 +2187,10 @@ class EssenceFSV2(EssenceFS):
             0
         )  # set stream pointer to the start of the file to allow writing to the non-lazy stream
 
-    def load_into_memory(self):
+    def load_into_memory(self) -> None:
         self._unlazy()
 
-    def save(self, out: Optional[BinaryIO] = None, safe_write: bool = False):
+    def save(self, out: Optional[BinaryIO] = None, safe_write: bool = False) -> None:
         """
         Saves the FileSystem to the handle provided, if saving in place; the archive will be loaded into memory if it is still lazy
         :param safe_write: Forces the serializer to write to the in-memory stream, before writing to the file. This will protect the file from being written to if the serializer fails midway. This does not protect the file from non-serializer failures (such as OSErrors)
@@ -2203,7 +2204,7 @@ class EssenceFSV2(EssenceFS):
 
         SgaFsV2Packer.serialize_sga(self, out, safe_mode=safe_write)
 
-    def getmeta(self, namespace="standard"):  # type: (Text) -> Mapping[Text, object]
+    def getmeta(self, namespace: str = "standard") -> Mapping[str, object]:
         if namespace == NS_ESSENCE:
             return {
                 "version": version,
@@ -2224,7 +2225,7 @@ class EssenceFSV2(EssenceFS):
         self._drives[drive.alias] = drive
         return self.opendir(SgaPathResolver.build(alias=drive.alias))
 
-    def _load_lazy(self, file: SgaFileV2):
+    def _load_lazy(self, file: SgaFileV2) -> None:
         toc = file.table_of_contents
         name_window = toc.names
         data_window = file.data_block
@@ -2238,7 +2239,7 @@ class EssenceFSV2(EssenceFS):
             )
             for file in toc.files
         ]
-        folders = []
+        folders: List[SgaFsFolderV2] = []
         for folder in toc.folders:
             folders.append(
                 SgaFsFolderV2(
@@ -2295,7 +2296,7 @@ class EssenceFSV2(EssenceFS):
                 continue
         raise fs.errors.ResourceNotFound(path)
 
-    def getinfo(self, path, namespaces=None) -> Info:
+    def getinfo(self, path: str, namespaces: Optional[Collection[str]] = None) -> Info:
         node: Union[_SgaFSFileV2, _SgaFsFolderV2] = self._getnode(path, exists=True)  # type: ignore
         return node.getinfo(namespaces)
 
@@ -2322,7 +2323,12 @@ class EssenceFSV2(EssenceFS):
 
         return parent, _child
 
-    def makedir(self, path, permissions=None, recreate=False) -> SubFS[EssenceFSV2]:
+    def makedir(
+        self,
+        path: str,
+        permissions: Optional[Permissions] = None,
+        recreate: bool = False,
+    ) -> SubFS[EssenceFSV2]:
         alias, _path = SgaPathResolver.parse(path)
         if alias is not None and _path == SgaPathResolver.ROOT:  # Make Drive
             try:
@@ -2349,7 +2355,12 @@ class EssenceFSV2(EssenceFS):
 
         return self.opendir(path)
 
-    def makedirs(self, path, permissions=None, recreate=False) -> SubFS[EssenceFSV2]:
+    def makedirs(
+        self,
+        path: str,
+        permissions: Optional[Permissions] = None,
+        recreate: bool = False,
+    ) -> SubFS[EssenceFSV2]:
         alias, _path = SgaPathResolver.parse(path)
         alias_path = SgaPathResolver.build(alias=alias)
 
@@ -2377,7 +2388,9 @@ class EssenceFSV2(EssenceFS):
             current = current.makedir(part, permissions, recreate)
         return current
 
-    def openbin(self, path, mode="r", buffering=-1, **options) -> BinaryIO:
+    def openbin(
+        self, path: str, mode: str = "r", buffering: int = -1, **options: Any
+    ) -> BinaryIO:
         _mode = Mode(mode)
         parent, child = self._try_enter_parent(path)
         child_node: _SgaFsFileV2 = parent.get_child(child)
@@ -2392,7 +2405,7 @@ class EssenceFSV2(EssenceFS):
 
         return child_node.openbin(mode)
 
-    def remove(self, path) -> None:
+    def remove(self, path: str) -> None:
         _, path = SgaPathResolver.parse(path)
         if path == SgaPathResolver.ROOT:  # special case; removing root
             raise fs.errors.FileExpected(path)
@@ -2407,7 +2420,7 @@ class EssenceFSV2(EssenceFS):
             fe_err.path = path
             raise
 
-    def removedir(self, path) -> None:
+    def removedir(self, path: str) -> None:
         _, path = SgaPathResolver.parse(path)
         if path == SgaPathResolver.ROOT:  # special case; removing root
             raise fs.errors.RemoveRootError(path)
@@ -2468,7 +2481,7 @@ class EssenceFSV2(EssenceFS):
         iter_info = iter(info)
         if page is not None:
             start, end = page
-            iter_info = itertools.islice(iter_info, start, end)
+            iter_info = itertools.islice(iter_info, start, end)  # type: ignore
         return iter_info
 
 

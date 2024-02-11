@@ -38,7 +38,7 @@ class ArcivWriter:
         self._indent_level = 0
 
     @contextmanager
-    def _enter_indent(self) -> Iterator:
+    def _enter_indent(self) -> Iterator[None]:
         self._indent_level += 1
         yield None
         self._indent_level -= 1
@@ -178,16 +178,16 @@ class ArcivWriter:
         )
         # yield from self._formatted(newline=True)
 
-    def tokens(self, data: dict) -> Iterable[str]:
+    def tokens(self, data: Dict[str, Any]) -> Iterable[str]:
         for key, value in data.items():
             yield from self._format_key_value(key, value)
 
-    def write(self, data: dict) -> str:
+    def write(self, data: Dict[str, Any]) -> str:
         with StringIO() as fp:
             self.writef(fp, data)
             return fp.getvalue()
 
-    def writef(self, fp: TextIO, data: dict) -> None:
+    def writef(self, fp: TextIO, data: Dict[str, Any]) -> None:
         for token in self.tokens(data):
             fp.write(token)
 
