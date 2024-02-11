@@ -15,6 +15,10 @@ from relic.core.lazyio import (
     ZLibFileReader,
     tell_end,
     BinaryProxySerializer,
+    BinaryProperty,
+    ByteConverter,
+    CStringConverter,
+    IntConverter,
 )
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.hashtools import md5, Hasher
@@ -298,28 +302,19 @@ class SgaTocFileV2Dow(_SgaTocFileV2):
 
 
 class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
-    _NAME_OFFSET = (0, 256)
-    _MODIFIED_OFFSET = (_next(*_NAME_OFFSET), 4)
-    _CRC_OFFSET = (_next(*_MODIFIED_OFFSET), 4)
-    _SIZE = _next(*_CRC_OFFSET)
-    _NAME_ENC = "ascii"
-    _NAME_PADDING = "\0"
-    _INT_FORMAT = {"byteorder": "little", "signed": False}
+    class Meta:
+        name_ptr = (0, 256)
+        modified_ptr = (260, 4)
+        crc_ptr = (264, 4)
+        SIZE = 268
 
-    @property
-    def name(self) -> str:
-        return self._serializer.c_string.read(
-            *self._NAME_OFFSET, encoding=self._NAME_ENC, padding=self._NAME_PADDING
+        name_cstring_converter = CStringConverter(
+            encoding="ascii", padding="\0", size=name_ptr[1]
         )
+        uint32le_converter = IntConverter(length=4, byteorder="little", signed=False)
 
-    @name.setter
-    def name(self, value: str):
-        self._serializer.c_string.write(
-            value,
-            *self._NAME_OFFSET,
-            encoding=self._NAME_ENC,
-            padding=self._NAME_PADDING,
-        )
+    name = BinaryProperty(*Meta.name_ptr, converter=Meta.name_cstring_converter)
+    crc32 = BinaryProperty(*Meta.crc_ptr, converter=Meta.uint32le_converter)
 
     @property
     def modified(self) -> int:
@@ -327,21 +322,13 @@ class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
         The time (from the unix epoch) when this file was modified.
         Measured to the second, fractions of a second are truncated.
         """
-        buffer = self._serializer.read_bytes(*self._MODIFIED_OFFSET)
+        buffer = self._serializer.read_bytes(*self.Meta.modified_ptr)
         return RelicUnixTimeSerializer.unpack(buffer)
 
     @modified.setter
     def modified(self, value: Union[float, int]):
         buffer = RelicUnixTimeSerializer.pack(value)
-        _ = self._serializer.write_bytes(buffer, *self._MODIFIED_OFFSET)
-
-    @property
-    def crc32(self) -> int:
-        return self._serializer.int.read(*self._CRC_OFFSET, **self._INT_FORMAT)
-
-    @crc32.setter
-    def crc32(self, value: int):
-        self._serializer.int.write(value, *self._CRC_OFFSET, **self._INT_FORMAT)
+        _ = self._serializer.write_bytes(buffer, *self.Meta.modified_ptr)
 
 
 class SgaTocFileDataV2Dow:
