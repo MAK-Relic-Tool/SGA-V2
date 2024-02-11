@@ -2,7 +2,7 @@ import os
 from contextlib import contextmanager
 from io import BytesIO
 from pathlib import Path
-from typing import List, Dict
+from typing import List, Dict, Tuple, Set
 
 import fs
 import pytest
@@ -30,14 +30,54 @@ if games_path is None:
     pytest.skip("GAMES not specified in ENV", allow_module_level=True)
 
 _root = Path(games_path)
-_installed: Dict[str, List[str]] = {
-    game: [str(sga) for sga in (_root / game).rglob("*.sga")] for game in _ALLOWED_GAMES
-}
+_installed_all: Dict[str, List[str]] = {}
+_installed_unique: Dict[str, List[str]] = {}
+_installed_allowed: dict[str, List[str]] = {}
+_unique_sgas: Set[Tuple[str, int]] = set()
+_KiB = 1024
+_MiB = 1024 * _KiB
+_GiB = 1024 * _MiB
+_MAX_SGA_TEST_SIZE = (
+    8 * _MiB
+)  # Some tests are REALLY long on large files; while it would be nice to test them, we test on a subset of the smaller ones to test faster
 
-_dow_dc_sgas = _installed[_DOW_DC]
-_dow_gold_sgas = _installed[_DOW_DC]
-_dow_ss_sgas = _installed[_DOW_DC]
-_imp_creatures_sgas = _installed[_IMP_CREATURES]
+for game in _ALLOWED_GAMES:
+    game_list = _installed_all[game] = []
+    unique_list = _installed_unique[game] = []
+    allowed_list = _installed_allowed[game] = []
+    for sga in (_root / game).rglob("*.sga"):
+        game_list.append(str(sga))
+        sga_name = sga.relative_to(_root)
+        sga_size = sga.stat().st_size
+        u_key = (str(sga_name), sga_size)
+        unique = u_key not in _unique_sgas
+        if unique:
+            unique_list.append(str(sga))
+
+            if sga_size <= _MAX_SGA_TEST_SIZE:
+                allowed_list.append(str(sga))
+
+
+_dow_dc_sgas = (
+    _installed_all[_DOW_DC],
+    _installed_unique[_DOW_DC],
+    _installed_allowed[_DOW_DC],
+)
+_dow_gold_sgas = (
+    _installed_all[_DOW_GOLD],
+    _installed_unique[_DOW_GOLD],
+    _installed_allowed[_DOW_GOLD],
+)
+_dow_ss_sgas = (
+    _installed_all[_DOW_SS],
+    _installed_unique[_DOW_SS],
+    _installed_allowed[_DOW_SS],
+)
+_imp_creatures_sgas = (
+    _installed_all[_IMP_CREATURES],
+    _installed_unique[_IMP_CREATURES],
+    _installed_allowed[_IMP_CREATURES],
+)
 
 QUICK = False  # skips slower tests like file MD5 checksums and file CRC checks
 
@@ -113,27 +153,61 @@ class GameTests:
                                             )
 
 
-@pytest.mark.skipif(len(_dow_dc_sgas) == 0, reason=f"'{_DOW_DC}' is not installed.")
-@pytest.mark.parametrize("path", _dow_dc_sgas)
+@pytest.mark.skipif(len(_dow_dc_sgas[0]) == 0, reason=f"'{_DOW_DC}' is not installed.")
+@pytest.mark.skipif(
+    len(_dow_dc_sgas[1]) == 0,
+    reason=f"'{_DOW_DC}' has no new content (it was handled by another DOW Test Case).",
+)
+@pytest.mark.skipif(
+    len(_dow_dc_sgas[2]) == 0,
+    reason=f"'{_DOW_DC}' has no content less than ({_MAX_SGA_TEST_SIZE} bytes).",
+)
+@pytest.mark.parametrize("path", _dow_dc_sgas[2])
 class TestDawnOfWarDarkCrusade(GameTests):
     ...
 
 
-@pytest.mark.skipif(len(_dow_gold_sgas) == 0, reason=f"'{_DOW_GOLD}' is not installed.")
-@pytest.mark.parametrize("path", _dow_gold_sgas)
+@pytest.mark.skipif(
+    len(_dow_gold_sgas[0]) == 0, reason=f"'{_DOW_GOLD}' is not installed."
+)
+@pytest.mark.skipif(
+    len(_dow_gold_sgas[1]) == 0,
+    reason=f"'{_DOW_GOLD}' has no new content (it was handled by another DOW Test Case).",
+)
+@pytest.mark.skipif(
+    len(_dow_gold_sgas[2]) == 0,
+    reason=f"'{_DOW_GOLD}' has no content less than ({_MAX_SGA_TEST_SIZE} bytes).",
+)
+@pytest.mark.parametrize("path", _dow_gold_sgas[2])
 class TestDawnOfWarGold(GameTests):
     ...
 
 
-@pytest.mark.skipif(len(_dow_ss_sgas) == 0, reason=f"'{_DOW_SS}' is not installed.")
-@pytest.mark.parametrize("path", _dow_ss_sgas)
+@pytest.mark.skipif(len(_dow_ss_sgas[0]) == 0, reason=f"'{_DOW_SS}' is not installed.")
+@pytest.mark.skipif(
+    len(_dow_ss_sgas[1]) == 0,
+    reason=f"'{_DOW_SS}' has no new content (it was handled by another DOW Test Case).",
+)
+@pytest.mark.skipif(
+    len(_dow_ss_sgas[2]) == 0,
+    reason=f"'{_DOW_SS}' has no content less than ({_MAX_SGA_TEST_SIZE} bytes).",
+)
+@pytest.mark.parametrize("path", _dow_ss_sgas[2])
 class TestDawnOfWarSoulstorm(GameTests):
     ...
 
 
 @pytest.mark.skipif(
-    len(_imp_creatures_sgas) == 0, reason=f"'{_IMP_CREATURES}' is not installed."
+    len(_imp_creatures_sgas[0]) == 0, reason=f"'{_IMP_CREATURES}' is not installed."
 )
-@pytest.mark.parametrize("path", _imp_creatures_sgas)
+@pytest.mark.skipif(
+    len(_imp_creatures_sgas[1]) == 0,
+    reason=f"'{_IMP_CREATURES}' has no new content (it was handled by another DOW Test Case).",
+)
+@pytest.mark.skipif(
+    len(_imp_creatures_sgas[2]) == 0,
+    reason=f"'{_IMP_CREATURES}' has no content less than ({_MAX_SGA_TEST_SIZE} bytes).",
+)
+@pytest.mark.parametrize("path", _imp_creatures_sgas[2])
 class TestImpossibleCreatures(GameTests):
     ...
