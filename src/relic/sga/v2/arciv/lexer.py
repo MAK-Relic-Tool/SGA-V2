@@ -38,7 +38,7 @@ literals = ["{", "}", ",", "="]
 
 
 def t_NAME(t: LexToken) -> LexToken:
-    r"[A-Za-z]+"
+    r"""[A-Za-z]+"""
     t.type = reserved.get(t.value, "NAME")
     return t
 
@@ -105,9 +105,6 @@ def t_error(t: LexToken) -> None:
         f"Scanning error. Illegal character '{t.value[0]}' found at L{t.lineno}:{t.lexpos}",
         t.value[0],
     )
-    # print("Illegal character '%s'" % t.value[0])
-    # t.lexer.close()
-    # t.lexer.skip(1)
 
 
 # Build the lexer

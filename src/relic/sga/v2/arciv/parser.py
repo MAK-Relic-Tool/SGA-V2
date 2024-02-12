@@ -10,9 +10,7 @@ def p_root(p):
     """
     expression  : dict_kvs
     """
-    # print("Enter Grammar |", *p)
     p[0] = p[1]
-    # assert p[0] is not None
 
 
 def p_list(p):
@@ -20,12 +18,10 @@ def p_list(p):
     list    : empty
             | '{' list_items '}'
     """
-    # print("Enter List |", *p)
     if len(p) == 2:
         p[0] = {}
     else:
         p[0] = p[2]
-    # assert p[0] is not None
 
 
 def p_list_items(p):
@@ -34,7 +30,6 @@ def p_list_items(p):
                 | list_items ','
                 | list_items ',' list_item
     """
-    # print("Enter List Items |", *p)
     if len(p) == 2:
         p[0] = [p[1]]  # make item into a list
     elif len(p) == 3:
@@ -44,7 +39,6 @@ def p_list_items(p):
         p[0] += [p[3]]
     else:
         raise NotImplementedError(len(p))
-    # assert p[0] is not None
 
 
 def p_list_item(p):
@@ -52,9 +46,7 @@ def p_list_item(p):
     list_item   : dict
     """
 
-    # print("Enter List Item |", *p)
     p[0] = p[1]
-    # assert p[0] is not None
 
 
 def p_dict(p):
@@ -62,17 +54,14 @@ def p_dict(p):
     dict    : empty
             | '{' dict_kvs '}'
     """
-    # print("Enter Dict |", *p)
 
     if len(p) == 2:
         p[0] = {}
     else:
         p[0] = p[2]
-    # assert p[0] is not None
 
 
 def p_error(p):
-    # print("Syntax error in input!",p)
     raise YaccError(p)
 
 
@@ -82,7 +71,6 @@ def p_dict_kvs(p):
                 | dict_kvs ','
                 | dict_kvs ',' kv
     """
-    # print("Enter KVS |", *p)
     if len(p) == 2:
         k, v = p[1]
         p[0] = {k: v}  # make item into a dict
@@ -94,14 +82,12 @@ def p_dict_kvs(p):
         p[0][k] = v
     else:
         raise NotImplementedError(len(p))
-    # assert p[0] is not None
 
 
 def p_empty(p):
     """
     empty   : '{' '}'
     """
-    # print("Enter Empty |", *p)
     p[0] = None
 
 
@@ -135,9 +121,7 @@ def p_kv(p):
         | NAME '=' dict
         | NAME '=' list
     """
-    # print("Enter KV |", *p)
     p[0] = p[1], p[3]
-    # assert p[0] is not None
 
 
 # Build the lexer

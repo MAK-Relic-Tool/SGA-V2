@@ -1026,7 +1026,6 @@ class _V2TocDisassembler:
 
     def write_name(self, name: str = SgaPathResolver.ROOT) -> int:
         raise RelicToolError("write_name is no longer valid")
-        # return self._write_name_to_table(self.name_table, name)
 
     def write_data(
         self,
@@ -1608,7 +1607,6 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
     ) -> None:
         name = folder.FolderInfo.folder
         full_path = SgaPathResolver.join(path, name) if path is not None else name
-        # index = self.folder_count
         name_offset = self.write_name_in_drive(drive, full_path)
         if write_back is None:
             write_back = self.write_folder()
@@ -1628,9 +1626,6 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
 
         for wb, sub_file in sub_files:
             self.write_arciv_file(sub_file, drive=drive, write_back=wb, fs_info=fs_info)
-        #
-        # if file_start == file_end:
-        #     file_start = file_end = 0
 
         self.write_folder(
             name_offset=name_offset,
@@ -1640,7 +1635,6 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             last_file=file_end,
             window_start=write_back,
         )
-        # return index
 
     def write_arciv_drive(
         self, drive: TocItem, fs_info: Optional[Tuple[FS, str]] = None
@@ -1664,11 +1658,9 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         folder_end = self.folder_count
         file_end = self.file_count
 
-        # index = self.drive_count
         self.write_drive(
             alias, name, folder_start, folder_end, file_start, file_end, folder_root
         )
-        # return index
 
     def _disassemble_arciv(self) -> None:
         self.write_arciv_names()
