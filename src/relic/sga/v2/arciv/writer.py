@@ -210,7 +210,7 @@ class ArcivEncoder:
 
 
 class _ArcivSpecialEncodable:
-    """Marks the class as needing special handling when automatically being encoded"""
+    """Marks the class as needing special handling when automatically being encoded."""
 
     def to_parser_dict(self) -> Dict[str, Any]:
         raise NotImplementedError

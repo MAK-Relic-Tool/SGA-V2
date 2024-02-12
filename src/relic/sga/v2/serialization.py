@@ -1,7 +1,5 @@
-"""
-Binary Serializers for Relic's SGA-V2
+"""Binary Serializers for Relic's SGA-V2."""
 
-"""
 from __future__ import annotations
 
 import os
@@ -19,6 +17,7 @@ from relic.core.lazyio import (
     ByteConverter,
     CStringConverter,
     IntConverter,
+    ConstProperty,
 )
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.hashtools import md5, Hasher
@@ -98,90 +97,34 @@ _TOC_MD5_EIGEN = b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF"
 
 
 class SgaHeaderV2(SgaHeader):
-    _FILE_MD5 = (0, 16)
-    _NAME = (_next(*_FILE_MD5), 128)
-    _TOC_MD5 = (_next(*_NAME), 16)
-    _TOC_SIZE = (_next(*_TOC_MD5), 4)
-    _DATA_POS = (_next(*_TOC_SIZE), 4)
-    _SIZE = _next(*_DATA_POS)
-    _TOC_POS = 180
-    _NAME_ENC = "utf-16-le"
-    _NAME_PAD = "\0"
-    _INT_FMT = {"byteorder": "little", "signed": False}
+    class Meta:
+        file_md5_ptr = (0, 16)
+        name_ptr = (16, 128)
+        toc_md5_ptr = (144, 16)
+        toc_size_ptr = (160, 4)
+        data_pos_ptr = (164, 4)
+        size = 168
 
-    @property
-    def file_md5(
-        self,
-    ) -> bytes:  # I marked this as a 'to do' but what did i need to 'to do'?
-        return self._serializer.read_bytes(*self._FILE_MD5)
+        toc_pos = 180
 
-    @file_md5.setter
-    def file_md5(self, value: bytes) -> None:
-        self._serializer.write_bytes(value, *self._FILE_MD5)
+        name_converter = CStringConverter("utf-16-le", b"\0", name_ptr[1])
+        uint32le_converter = IntConverter(4, "little", signed=False)
 
-    @property
-    def name(self) -> str:
-        return self._serializer.c_string.read(
-            *self._NAME, encoding=self._NAME_ENC, padding=self._NAME_PAD
-        )
+    file_md5: bytes = BinaryProperty(*Meta.file_md5_ptr, converter=ByteConverter)  # type: ignore
+    name: str = BinaryProperty(*Meta.name_ptr, converter=Meta.name_converter)  # type: ignore
+    toc_md5: bytes = BinaryProperty(*Meta.toc_md5_ptr, converter=ByteConverter)  # type: ignore
 
-    @name.setter
-    def name(self, value: str) -> None:
-        self._serializer.c_string.write(
-            value, *self._NAME, encoding=self._NAME_ENC, padding=self._NAME_PAD
-        )
+    # Todo raise an explicit not writable error
+    toc_pos: int = ConstProperty(Meta.toc_pos)  # type: ignore
+    toc_size: int = BinaryProperty(*Meta.toc_size_ptr, converter=Meta.uint32le_converter)  # type: ignore
+    data_pos: int = BinaryProperty(*Meta.data_pos_ptr, converter=Meta.uint32le_converter)  # type: ignore
 
-    @property
-    def toc_md5(
-        self,
-    ) -> bytes:  # I marked this as a 'to do' but what did i need to 'to do'?
-        return self._serializer.read_bytes(*self._TOC_MD5)
+    #        raise RelicToolError(
+    #             "Data Size is not specified in SGA v2!"
+    #         )  # TODO raise an explicit `not writable` error
+    data_size: None = ConstProperty(None)  # type: ignore
 
-    @toc_md5.setter
-    def toc_md5(self, value: bytes) -> None:
-        self._serializer.write_bytes(value, *self._TOC_MD5)
-
-    @property
-    def toc_pos(self) -> int:
-        result = (
-            self._TOC_POS
-        )  # self._SIZE + SgaFileV2._MAGIC_VERSION_SIZE  # 184 | 0xB8
-        return result
-        # pass
-
-    @toc_pos.setter
-    def toc_pos(self, value: bytes) -> None:
-        raise RelicToolError(
-            "Header Pos is fixed in SGA v2!"
-        )  # TODO raise an explicit `not writable` error
-
-    @property
-    def toc_size(self) -> int:
-        return self._serializer.uint32.read(*self._TOC_SIZE, **self._INT_FMT)
-
-    @toc_size.setter
-    def toc_size(self, value: int):
-        self._serializer.uint32.write(value, *self._TOC_SIZE, **self._INT_FMT)
-
-    @property
-    def data_pos(self) -> int:
-        return self._serializer.uint32.read(*self._DATA_POS, **self._INT_FMT)
-
-    @data_pos.setter
-    def data_pos(self, value: int):
-        self._serializer.uint32.write(value, *self._DATA_POS, **self._INT_FMT)
-
-    @property
-    def data_size(self) -> None:
-        return None
-
-    @data_size.setter
-    def data_size(self, value: None):
-        raise RelicToolError(
-            "Data Size is not specified in SGA v2!"
-        )  # TODO raise an explicit `not writable` error
-
-    def __repr__(self):
+    def __repr__(self) -> str:
         return _repr_obj(
             self,
             "file_md5",
@@ -227,12 +170,12 @@ class SgaTocFolderV2(SgaTocFolder):
 
 
 class _SgaTocFileV2(SgaTocFile, BinaryProxySerializer):
-    _NAME_OFFSET: Tuple[int, int] = None
-    _FLAGS: Tuple[int, int] = None
-    _DATA_OFFSET: Tuple[int, int] = None
-    _COMP_SIZE: Tuple[int, int] = None
-    _DECOMP_SIZE: Tuple[int, int] = None
-    _SIZE: int = None
+    _NAME_OFFSET: Tuple[int, int] = None  # type: ignore
+    _FLAGS: Tuple[int, int] = None  # type: ignore
+    _DATA_OFFSET: Tuple[int, int] = None  # type: ignore
+    _COMP_SIZE: Tuple[int, int] = None  # type: ignore
+    _DECOMP_SIZE: Tuple[int, int] = None  # type: ignore
+    _SIZE: int = None  # type: ignore
     _STORAGE_TYPE_MASK: int = 0xF0  # 00, 10, 20
     _STORAGE_TYPE_SHIFT: int = 4
     _INT_FORMAT = {"byteorder": "little", "signed": False}
@@ -241,55 +184,53 @@ class _SgaTocFileV2(SgaTocFile, BinaryProxySerializer):
         super().__init__(parent)
 
     @property
-    def name_offset(self):  # name_rel_pos
-        return self._serializer.int.read(*self._NAME_OFFSET, **self._INT_FORMAT)
+    def name_offset(self) -> int:  # name_rel_pos
+        return self._serializer.int.read(*self._NAME_OFFSET, **self._INT_FORMAT)  # type: ignore
 
     @name_offset.setter
-    def name_offset(self, value: int):
-        self._serializer.int.write(value, *self._NAME_OFFSET, **self._INT_FORMAT)
+    def name_offset(self, value: int) -> None:
+        self._serializer.int.write(value, *self._NAME_OFFSET, **self._INT_FORMAT)  # type: ignore
 
     @property
-    def data_offset(self):  # data_rel_pos
-        return self._serializer.int.read(*self._DATA_OFFSET, **self._INT_FORMAT)
+    def data_offset(self) -> int:  # data_rel_pos
+        return self._serializer.int.read(*self._DATA_OFFSET, **self._INT_FORMAT)  # type: ignore
 
     @data_offset.setter
-    def data_offset(self, value: int):
-        self._serializer.int.write(value, *self._DATA_OFFSET, **self._INT_FORMAT)
+    def data_offset(self, value: int) -> None:
+        self._serializer.int.write(value, *self._DATA_OFFSET, **self._INT_FORMAT)  # type: ignore
 
     @property
-    def compressed_size(self):  # length_in_archive
-        return self._serializer.int.read(*self._COMP_SIZE, **self._INT_FORMAT)
+    def compressed_size(self) -> int:  # length_in_archive
+        return self._serializer.int.read(*self._COMP_SIZE, **self._INT_FORMAT)  # type: ignore
 
     @compressed_size.setter
-    def compressed_size(self, value: int):
-        self._serializer.int.write(value, *self._COMP_SIZE, **self._INT_FORMAT)
+    def compressed_size(self, value: int) -> None:
+        self._serializer.int.write(value, *self._COMP_SIZE, **self._INT_FORMAT)  # type: ignore
 
     @property
-    def decompressed_size(self):  # length_on_disk
-        return self._serializer.int.read(*self._DECOMP_SIZE, **self._INT_FORMAT)
+    def decompressed_size(self) -> int:  # length_on_disk
+        return self._serializer.int.read(*self._DECOMP_SIZE, **self._INT_FORMAT)  # type: ignore
 
     @decompressed_size.setter
-    def decompressed_size(self, value: int):
-        self._serializer.int.write(value, *self._DECOMP_SIZE, **self._INT_FORMAT)
+    def decompressed_size(self, value: int) -> None:
+        self._serializer.int.write(value, *self._DECOMP_SIZE, **self._INT_FORMAT)  # type: ignore
 
     @property
     def storage_type(self) -> StorageType:
-        """
-        The Storage Type that the
-        """
-        value = self._serializer.int.read(*self._FLAGS, **self._INT_FORMAT)
+        """The Storage Type that the."""
+        value = self._serializer.int.read(*self._FLAGS, **self._INT_FORMAT)  # type: ignore
         value &= self._STORAGE_TYPE_MASK
         value >>= self._STORAGE_TYPE_SHIFT
         return StorageType(value)
 
     @storage_type.setter
-    def storage_type(self, value: StorageType):
+    def storage_type(self, value: StorageType) -> None:
         # assuming this IS IN FACT, a flag value, we need to read it to edit it
         flag = value << self._STORAGE_TYPE_SHIFT
-        buffer_value = self._serializer.int.read(*self._FLAGS, **self._INT_FORMAT)
+        buffer_value = self._serializer.int.read(*self._FLAGS, **self._INT_FORMAT)  # type: ignore
         buffer_value &= ~self._STORAGE_TYPE_MASK  # clear storage flag
         buffer_value |= flag  # apply storage flag
-        self._serializer.int.write(buffer_value, *self._FLAGS, **self._INT_FORMAT)
+        self._serializer.int.write(buffer_value, *self._FLAGS, **self._INT_FORMAT)  # type: ignore
 
 
 class SgaTocFileV2Dow(_SgaTocFileV2):
@@ -309,7 +250,7 @@ class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
         SIZE = 268
 
         name_cstring_converter = CStringConverter(
-            encoding="ascii", padding="\0", size=name_ptr[1]
+            encoding="ascii", padding=b"\0", size=name_ptr[1]
         )
         uint32le_converter = IntConverter(length=4, byteorder="little", signed=False)
 
@@ -318,15 +259,15 @@ class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
 
     @property
     def modified(self) -> int:
-        """
-        The time (from the unix epoch) when this file was modified.
+        """The time (from the unix epoch) when this file was modified.
+
         Measured to the second, fractions of a second are truncated.
         """
         buffer = self._serializer.read_bytes(*self.Meta.modified_ptr)
         return RelicUnixTimeSerializer.unpack(buffer)
 
     @modified.setter
-    def modified(self, value: Union[float, int]):
+    def modified(self, value: Union[float, int]) -> None:
         buffer = RelicUnixTimeSerializer.pack(value)
         _ = self._serializer.write_bytes(buffer, *self.Meta.modified_ptr)
 
@@ -342,13 +283,13 @@ class SgaTocFileDataV2Dow:
         self._name_window = name_window
         self._data_window = data_window
 
-        size = SgaTocFileDataHeaderV2Dow._SIZE
+        size = SgaTocFileDataHeaderV2Dow.Meta.SIZE
         offset = self._toc_file.data_offset - size
         _data_header_window = BinaryWindow(self._data_window, offset, size)
         self._data_header = SgaTocFileDataHeaderV2Dow(_data_header_window)
 
     @property
-    def name(self):
+    def name(self) -> str:
         return self._name_window.get_name(self._toc_file.name_offset)
 
     @property
@@ -409,7 +350,7 @@ class SgaTocV2(SgaToc):
         return smallest
 
     @classmethod
-    def _determine_game(cls, header: SgaTocHeaderV2, toc_end: int):
+    def _determine_game(cls, header: SgaTocHeaderV2, toc_end: int) -> SgaV2GameFormat:
         # Unfortunately DoW and IC (Steam) have a slightly different file layout
         # DoW is 20 and IC is 17
         # We can determine which via comparing the size of the full block
@@ -463,16 +404,16 @@ class SgaTocV2(SgaToc):
         return self._header
 
     @property
-    def drives(self) -> SgaTocInfoArea[SgaTocDrive]:
-        return self._drives
+    def drives(self) -> SgaTocInfoArea[SgaTocDrive]:  # type: ignore
+        return self._drives  # type: ignore
 
     @property
-    def folders(self) -> SgaTocInfoArea[SgaTocFolder]:
-        return self._folders
+    def folders(self) -> SgaTocInfoArea[SgaTocFolder]:  # type: ignore
+        return self._folders  # type: ignore
 
     @property
-    def files(self) -> SgaTocInfoArea[SgaTocFile]:
-        return self._files
+    def files(self) -> SgaTocInfoArea[SgaTocFile]:  # type: ignore
+        return self._files  # type: ignore
 
     @property
     def names(self) -> SgaNameWindow:
@@ -484,7 +425,7 @@ class SgaTocV2(SgaToc):
 
 
 class SgaFileV2(SgaFile):
-    _META_BLOCK = (SgaFile._MAGIC_VERSION_SIZE, SgaHeaderV2._SIZE)
+    _META_BLOCK = (SgaFile._MAGIC_VERSION_SIZE, SgaHeaderV2.Meta.size)
 
     def __init__(self, parent: BinaryIO, game_format: Optional[SgaV2GameFormat] = None):
         super().__init__(parent)
@@ -502,7 +443,7 @@ class SgaFileV2(SgaFile):
         self,
         cached: bool,
         error: bool,
-        hasher: Hasher,
+        hasher: Hasher[bytes],
         hash_kwargs: Dict[str, Any],
         expected: bytes,
         cache_name: str,
@@ -517,13 +458,13 @@ class SgaFileV2(SgaFile):
             kwargs["stream"] = self._serializer.stream
             kwargs["expected"] = expected
             if not error:
-                result = hasher.check(*kwargs)
+                result = hasher.check(**kwargs)
             else:
                 hasher.validate(**kwargs)
                 result = True
             setattr(self, cache_name, result)
 
-        return getattr(self, cache_name)
+        return getattr(self, cache_name)  # type: ignore
 
     def verify_file(self, cached: bool = True, error: bool = False) -> bool:
         NAME = "__verified_file"

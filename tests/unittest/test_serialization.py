@@ -859,8 +859,10 @@ class TestSgaTocFileV2:
         if buffer is None:
             buffer = build_sga_toc_file_empty_buffer(dow_format)
         with BytesIO(buffer) as stream:
-            yield SgaTocFileV2Dow(stream) if dow_format else SgaTocFileV2ImpCreatures(
-                stream
+            yield (
+                SgaTocFileV2Dow(stream)
+                if dow_format
+                else SgaTocFileV2ImpCreatures(stream)
             )
 
     def test_read_name_offset(self, data: SgaTocFileData, buffer: bytes):

@@ -163,8 +163,7 @@ class GameTests:
     reason=f"'{_DOW_DC}' has no content less than ({_MAX_SGA_TEST_SIZE} bytes).",
 )
 @pytest.mark.parametrize("path", _dow_dc_sgas[2])
-class TestDawnOfWarDarkCrusade(GameTests):
-    ...
+class TestDawnOfWarDarkCrusade(GameTests): ...
 
 
 @pytest.mark.skipif(
@@ -179,8 +178,7 @@ class TestDawnOfWarDarkCrusade(GameTests):
     reason=f"'{_DOW_GOLD}' has no content less than ({_MAX_SGA_TEST_SIZE} bytes).",
 )
 @pytest.mark.parametrize("path", _dow_gold_sgas[2])
-class TestDawnOfWarGold(GameTests):
-    ...
+class TestDawnOfWarGold(GameTests): ...
 
 
 @pytest.mark.skipif(len(_dow_ss_sgas[0]) == 0, reason=f"'{_DOW_SS}' is not installed.")
@@ -193,8 +191,7 @@ class TestDawnOfWarGold(GameTests):
     reason=f"'{_DOW_SS}' has no content less than ({_MAX_SGA_TEST_SIZE} bytes).",
 )
 @pytest.mark.parametrize("path", _dow_ss_sgas[2])
-class TestDawnOfWarSoulstorm(GameTests):
-    ...
+class TestDawnOfWarSoulstorm(GameTests): ...
 
 
 @pytest.mark.skipif(
@@ -209,5 +206,4 @@ class TestDawnOfWarSoulstorm(GameTests):
     reason=f"'{_IMP_CREATURES}' has no content less than ({_MAX_SGA_TEST_SIZE} bytes).",
 )
 @pytest.mark.parametrize("path", _imp_creatures_sgas[2])
-class TestImpossibleCreatures(GameTests):
-    ...
+class TestImpossibleCreatures(GameTests): ...

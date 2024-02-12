@@ -1,6 +1,5 @@
-"""
-Relic's V2.0 Specification for SGA files.
-"""
+"""Relic's V2.0 Specification for SGA files."""
+
 from relic.sga.v2.definitions import (
     version,
 )

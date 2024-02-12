@@ -4,26 +4,26 @@ on:
   workflow_dispatch:
 
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'src/relic/**'
-      - 'tests/**'
-      - '.github/workflows/pytest.yml'
-      - 'setup.cfg'
-      - 'setup.py'
-      - 'MANIFEST.in'
-      - 'test-requirements.txt'
+    - src/relic/**
+    - tests/**
+    - .github/workflows/pytest.yml
+    - setup.cfg
+    - setup.py
+    - MANIFEST.in
+    - test-requirements.txt
 
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'src/relic/**'
-      - 'tests/**'
-      - '.github/workflows/pytest.yml'
-      - 'setup.cfg'
-      - 'setup.py'
-      - 'MANIFEST.in'
-      - 'test-requirements.txt'
+    - src/relic/**
+    - tests/**
+    - .github/workflows/pytest.yml
+    - setup.cfg
+    - setup.py
+    - MANIFEST.in
+    - test-requirements.txt
 
 jobs:
   pytest:

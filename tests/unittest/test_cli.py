@@ -103,27 +103,21 @@ class TestCLI:
             yield dir
 
     def test_pack(self, dataset: str) -> None:
-        """
-        Tests that the CLI Pack function runs without error
-        """
+        """Tests that the CLI Pack function runs without error."""
         tmp_fs: FS
         with create_temp_dataset_fs(dataset) as tmp_fs:
             for arciv in tmp_fs.glob("**/*.arciv"):
                 self._pack(tmp_fs, arciv)
 
     def test_unpack(self, dataset: str) -> None:
-        """
-        Tests that the CLI Unpack function runs without error
-        """
+        """Tests that the CLI Unpack function runs without error."""
         tmp_fs: FS
         with create_temp_dataset_fs(dataset) as tmp_fs:
             for sga in tmp_fs.glob("**/*.sga"):
                 self._unpack(tmp_fs, sga)
 
     def test_pack_validity(self, dataset: str) -> None:
-        """
-        Tests that the CLI Pack function runs without error
-        """
+        """Tests that the CLI Pack function runs without error."""
         tmp_fs: FS
         MAN_FILE = "file_manifest.json"
         with create_temp_dataset_fs(dataset) as tmp_fs:
@@ -144,9 +138,7 @@ class TestCLI:
                     raise
 
     def test_unpack_validity(self, dataset: str) -> None:
-        """
-        Tests that the CLI Unpack properly extracts all files in the SGA
-        """
+        """Tests that the CLI Unpack properly extracts all files in the SGA."""
         tmp_fs: FS
         MAN_FILE = "manifest.json"
         with create_temp_dataset_fs(dataset) as tmp_fs:

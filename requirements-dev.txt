@@ -1,6 +1,6 @@
+black>=22.6.0
+mypy>=0.961
 # Include modules used for development
 pylint>=2.14.4
 pytest>=7.1.2
-mypy>=0.961
 sphinx>=5.0.2
-black>=22.6.0

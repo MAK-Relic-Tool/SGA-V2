@@ -122,7 +122,7 @@ class Arciv(_ArcivSpecialEncodable):
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> Arciv:
-        """Converts a parser result to a formatted"""
+        """Converts a parser result to a formatted."""
 
         root_dict = d["Archive"]
         header_dict = root_dict["ArchiveHeader"]
