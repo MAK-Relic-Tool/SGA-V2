@@ -5,9 +5,13 @@ from dataclasses import dataclass
 from os import PathLike
 from typing import Dict, Any, List, Union, Optional
 
+from relic.core.errors import RelicToolError
 from relic.sga.core.definitions import StorageType
 
 from relic.sga.v2.arciv.writer import _ArcivSpecialEncodable
+
+
+class ArcivLayoutError(RelicToolError): ...
 
 
 @dataclass
@@ -24,16 +28,19 @@ class TocFileItem(_ArcivSpecialEncodable):
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> TocFileItem:
-        storage_value: int = d["Store"]
-        if storage_value == -1:
-            storage = None
-        else:
-            storage = StorageType(storage_value)
+        try:
+            storage_value: int = d["Store"]
+            if storage_value == -1:
+                storage = None
+            else:
+                storage = StorageType(storage_value)
 
-        kwargs = d.copy()
-        kwargs["Store"] = storage
+            kwargs = d.copy()
+            kwargs["Store"] = storage
 
-        return cls(**kwargs)
+            return cls(**kwargs)
+        except KeyError as e:
+            raise ArcivLayoutError from e
 
     def to_parser_dict(self) -> Any:
         obj = dataclasses.asdict(self)
@@ -55,11 +62,14 @@ class TocFolderItem:
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> TocFolderItem:
-        files = [TocFileItem.from_parser(file) for file in d["Files"]]
-        folders = [TocFolderItem.from_parser(folder) for folder in d["Folders"]]
-        folder_info = TocFolderInfo(**d["FolderInfo"])
+        try:
+            files = [TocFileItem.from_parser(file) for file in d["Files"]]
+            folders = [TocFolderItem.from_parser(folder) for folder in d["Folders"]]
+            folder_info = TocFolderInfo(**d["FolderInfo"])
 
-        return cls(Files=files, Folders=folders, FolderInfo=folder_info)
+            return cls(Files=files, Folders=folders, FolderInfo=folder_info)
+        except KeyError as e:
+            raise ArcivLayoutError from e
 
 
 @dataclass
@@ -71,14 +81,17 @@ class TocStorage(_ArcivSpecialEncodable):
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> TocStorage:
-        storage_value: int = d["Storage"]
-        if storage_value == -1:
-            storage = None
-        else:
-            storage = StorageType(storage_value)
-        kwargs = d.copy()
-        kwargs["Storage"] = storage
-        return cls(**kwargs)
+        try:
+            storage_value: int = d["Storage"]
+            if storage_value == -1:
+                storage = None
+            else:
+                storage = StorageType(storage_value)
+            kwargs = d.copy()
+            kwargs["Storage"] = storage
+            return cls(**kwargs)
+        except KeyError as e:
+            raise ArcivLayoutError from e
 
     def to_parser_dict(self) -> Any:
         obj = dataclasses.asdict(self)
@@ -95,10 +108,13 @@ class TocHeader:
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> TocHeader:
-        storage = [TocStorage.from_parser(item) for item in d["Storage"]]
-        kwargs = d.copy()
-        kwargs["Storage"] = storage
-        return cls(**kwargs)
+        try:
+            storage = [TocStorage.from_parser(item) for item in d["Storage"]]
+            kwargs = d.copy()
+            kwargs["Storage"] = storage
+            return cls(**kwargs)
+        except KeyError as e:
+            raise ArcivLayoutError from e
 
 
 @dataclass
@@ -108,9 +124,12 @@ class TocItem:
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> TocItem:
-        toc_header = TocHeader.from_parser(d["TOCHeader"])
-        root_folder = TocFolderItem.from_parser(d["RootFolder"])
-        return cls(TOCHeader=toc_header, RootFolder=root_folder)
+        try:
+            toc_header = TocHeader.from_parser(d["TOCHeader"])
+            root_folder = TocFolderItem.from_parser(d["RootFolder"])
+            return cls(TOCHeader=toc_header, RootFolder=root_folder)
+        except KeyError as e:
+            raise ArcivLayoutError from e
 
 
 @dataclass
@@ -123,16 +142,18 @@ class Arciv(_ArcivSpecialEncodable):
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> Arciv:
         """Converts a parser result to a formatted."""
+        try:
+            root_dict = d["Archive"]
+            header_dict = root_dict["ArchiveHeader"]
+            toc_list_dicts = root_dict["TOCList"]
 
-        root_dict = d["Archive"]
-        header_dict = root_dict["ArchiveHeader"]
-        toc_list_dicts = root_dict["TOCList"]
-
-        header = ArchiveHeader(**header_dict)
-        toc_list = [
-            TocItem.from_parser(toc_item_dict) for toc_item_dict in toc_list_dicts
-        ]
-        return cls(header, toc_list)
+            header = ArchiveHeader(**header_dict)
+            toc_list = [
+                TocItem.from_parser(toc_item_dict) for toc_item_dict in toc_list_dicts
+            ]
+            return cls(header, toc_list)
+        except KeyError as e:
+            raise ArcivLayoutError from e
 
     def to_parser_dict(self) -> Dict[str, Any]:
         return {"Archive": dataclasses.asdict(self)}

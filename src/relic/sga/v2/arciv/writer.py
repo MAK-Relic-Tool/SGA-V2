@@ -7,6 +7,8 @@ from io import StringIO
 from os import PathLike
 from typing import Optional, Iterable, Union, List, Dict, Any, TextIO, Iterator
 
+from relic.core.errors import RelicToolError
+
 
 @dataclass
 class ArcivWriterSettings:
@@ -25,6 +27,12 @@ class ArcivWriterSettings:
     @property
     def has_newline(self) -> bool:
         return self.newline is not None and len(self.newline) > 0
+
+
+class ArcivWriterError(RelicToolError): ...
+
+
+class ArcivEncoderError(RelicToolError): ...
 
 
 class ArcivWriter:
@@ -133,7 +141,7 @@ class ArcivWriter:
             yield from self._formatted("}", comma=in_collection, newline=True)
 
         else:
-            raise NotImplementedError(
+            raise ArcivWriterError(
                 f"Cannot format '{encoded}' ({encoded.__module__}.{encoded.__qualname__})"
             )
 
@@ -163,7 +171,7 @@ class ArcivWriter:
                 encoded, in_collection=in_collection, in_assignment=in_assignment
             )
         else:
-            raise NotImplementedError(
+            raise ArcivWriterError(
                 f"Cannot format '{encoded}' ({encoded.__module__}.{encoded.__qualname__})"
             )
 
@@ -176,7 +184,6 @@ class ArcivWriter:
         yield from self._format_item(
             value, in_assignment=True, in_collection=in_collection
         )
-        # yield from self._formatted(newline=True)
 
     def tokens(self, data: Dict[str, Any]) -> Iterable[str]:
         for key, value in data.items():
@@ -204,7 +211,7 @@ class ArcivEncoder:
             return dataclasses.asdict(obj)
         if isinstance(obj, (str, int, float, dict, list, PathLike)):
             return obj
-        raise NotImplementedError(
+        raise ArcivEncoderError(
             f"Cannot encode '{obj}' ({obj.__module__}.{obj.__qualname__})"
         )
 
