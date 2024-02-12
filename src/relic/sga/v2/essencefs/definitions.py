@@ -1024,8 +1024,19 @@ class _V2TocDisassembler:
 
         return index
 
-    def write_name(self, name: str = SgaPathResolver.ROOT) -> int:
-        raise RelicToolError("write_name is no longer valid")
+    @property
+    def name_count(self) -> int:
+        return sum(len(v) for v in self.name_tables.values())
+
+    def _get_or_make_name_table(self, key: str) -> Dict[str, int]:
+        result = self.name_tables.get(key)
+        if result is None:
+            result = self.name_tables[key] = {}
+        return result
+
+    def write_name_in_drive(self, drive: str, name: str = SgaPathResolver.ROOT) -> int:
+        name_table = self._get_or_make_name_table(drive)
+        return self._write_name_to_table(name_table, name.lower())
 
     def write_data(
         self,
@@ -1266,6 +1277,10 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
         super().__init__(_format)
         self.filesystem = sga
 
+    def write_name(self, path: str):
+        # TODO; warn to use write_name_in_drive, and refactor out
+        self.write_name_in_drive("", path)
+
     def write_fs_tree_names(
         self, folder: _SgaFsFolderV2, path: Optional[str] = None
     ) -> None:
@@ -1420,28 +1435,6 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         self.arciv = arciv
         self._root = filesystem_root
 
-    @property
-    def name_count(self) -> int:
-        return sum(len(v) for v in self.name_tables.values())
-
-    def _get_or_make_name_table(self, drive: TocItem) -> Dict[str, int]:
-        key: str = f"{drive.TOCHeader.Name}-{drive.TOCHeader.Alias}"
-        result = self.name_tables.get(key)
-        if result is None:
-            result = self.name_tables[key] = {}
-        return result
-
-    def write_name_in_drive(
-        self, drive: TocItem, name: str = SgaPathResolver.ROOT
-    ) -> int:
-        name_table = self._get_or_make_name_table(drive)
-        return self._write_name_to_table(name_table, name.lower())
-
-    def write_name(self, name: str = SgaPathResolver.ROOT) -> int:
-        raise RelicToolError(
-            f"{ArcivV2TocDisassembler.__name__} should use '{self.write_name_in_drive.__name__}'!"
-        )
-
     def _get_fspath(self, path: str, fs_info: Optional[Tuple[FS, str]]) -> str:
         SEPS = [
             ("\\", r"/"),
@@ -1489,9 +1482,13 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
 
         return results
 
+    def _write_name_in_drive(self, drive: TocItem, name: str):
+        key: str = f"{drive.TOCHeader.Name}-{drive.TOCHeader.Alias}"
+        self.write_name_in_drive(key, name)
+
     def write_arciv_file_names(self, folder: TocFolderItem, drive: TocItem) -> None:
         for file in sorted(folder.Files, key=lambda x: x.File.lower()):
-            self.write_name_in_drive(drive, file.File)
+            self._write_name_in_drive(drive, file.File)
 
         for folder in folder.Folders:
             self.write_arciv_file_names(folder, drive)
@@ -1503,7 +1500,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         parent_full_path = (
             SgaPathResolver.join(path, name) if path is not None else name
         )
-        self.write_name_in_drive(drive, parent_full_path)
+        self._write_name_in_drive(drive, parent_full_path)
 
         for sub_folder in sorted(
             folder.Folders, key=lambda x: x.FolderInfo.folder.lower()
@@ -1511,7 +1508,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             full_subfolder_path = SgaPathResolver.join(
                 parent_full_path, sub_folder.FolderInfo.folder
             )
-            self.write_name_in_drive(drive, full_subfolder_path)
+            self._write_name_in_drive(drive, full_subfolder_path)
 
         for sub_folder in folder.Folders:
             self.write_arciv_folder_names(sub_folder, drive, parent_full_path)
@@ -1574,7 +1571,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             )
         else:
             storage_type = file.Store
-        name_offset = self.write_name_in_drive(drive, name)
+        name_offset = self._write_name_in_drive(drive, name)
 
         with filesystem.openbin(fs_path, "r") as h:
             uncompressed_buffer = h.read()
@@ -1607,7 +1604,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
     ) -> None:
         name = folder.FolderInfo.folder
         full_path = SgaPathResolver.join(path, name) if path is not None else name
-        name_offset = self.write_name_in_drive(drive, full_path)
+        name_offset = self._write_name_in_drive(drive, full_path)
         if write_back is None:
             write_back = self.write_folder()
 
