@@ -40,7 +40,7 @@ class CommandTests:
 _SGA_PACK_HELP = ["sga", "pack", "-h"], """usage: relic sga pack [-h] {v2} ...""", 0
 _SGA_PACK_v2_HELP = (
     ["sga", "pack", "v2", "-h"],
-    """sage: relic sga pack v2 [-h] src_dir out_sga config_file""",
+    """usage: relic sga pack v2 [-h] manifest [out_path]""",
     0,
 )
 
@@ -133,6 +133,7 @@ def test_cli_unpack_pack_one_to_one(src: str):
 
 
 @pytest.mark.parametrize("src", argvalues=_SAMPLES, ids=_SAMPLES)
+@pytest.mark.skip("Repack is no longer supported")
 def test_cli_repack(src: str):
 
     repacked_file_name = None
