@@ -26,7 +26,6 @@ class CommandTests:
         assert status == exit_code
 
     def test_run_with(self, args: Sequence[str], output: str, exit_code: int):
-
         with io.StringIO() as f:
             with redirect_stdout(f):
                 status = CLI.run_with(*args)
@@ -135,7 +134,6 @@ def test_cli_unpack_pack_one_to_one(src: str):
 @pytest.mark.parametrize("src", argvalues=_SAMPLES, ids=_SAMPLES)
 @pytest.mark.skip("Repack is no longer supported")
 def test_cli_repack(src: str):
-
     repacked_file_name = None
     try:
         with tempfile.NamedTemporaryFile("w+", delete=False) as config_file:
