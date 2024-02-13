@@ -1260,11 +1260,6 @@ class _V2TocDisassembler:
     def drive_count(self) -> int:
         return self._drive_count
 
-    @property
-    def name_count(self) -> int:
-        raise NotImplementedError("Research needed on multiple name-tables")
-        # return len(self.name_table)
-
 
 class SgaFsV2TocDisassembler(_V2TocDisassembler):
     """Disassembles a SGA Fs into separate in-memory partial ToC blocks, which can be
@@ -1277,9 +1272,9 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
         super().__init__(_format)
         self.filesystem = sga
 
-    def write_name(self, path: str):
+    def write_name(self, path: str) -> int:
         # TODO; warn to use write_name_in_drive, and refactor out
-        self.write_name_in_drive("", path)
+        return self.write_name_in_drive("", path)
 
     def write_fs_tree_names(
         self, folder: _SgaFsFolderV2, path: Optional[str] = None
@@ -1482,9 +1477,9 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
 
         return results
 
-    def _write_name_in_drive(self, drive: TocItem, name: str):
+    def _write_name_in_drive(self, drive: TocItem, name: str) -> int:
         key: str = f"{drive.TOCHeader.Name}-{drive.TOCHeader.Alias}"
-        self.write_name_in_drive(key, name)
+        return self.write_name_in_drive(key, name)
 
     def write_arciv_file_names(self, folder: TocFolderItem, drive: TocItem) -> None:
         for file in sorted(folder.Files, key=lambda x: x.File.lower()):
