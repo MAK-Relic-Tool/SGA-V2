@@ -107,7 +107,7 @@ class SgaHeaderV2(SgaHeader):
 
         toc_pos = 180
 
-        name_converter = CStringConverter("utf-16-le", b"\0", name_ptr[1])
+        name_converter = CStringConverter("utf-16-le", "\0", name_ptr[1])
         uint32le_converter = IntConverter(4, "little", signed=False)
 
     file_md5: bytes = BinaryProperty(*Meta.file_md5_ptr, converter=ByteConverter)  # type: ignore
@@ -115,14 +115,14 @@ class SgaHeaderV2(SgaHeader):
     toc_md5: bytes = BinaryProperty(*Meta.toc_md5_ptr, converter=ByteConverter)  # type: ignore
 
     # Todo raise an explicit not writable error
-    toc_pos: int = ConstProperty(Meta.toc_pos)  # type: ignore
+    toc_pos: int = ConstProperty(Meta.toc_pos, RelicToolError("Header Pos is fixed in SGA v2!"))  # type: ignore
     toc_size: int = BinaryProperty(*Meta.toc_size_ptr, converter=Meta.uint32le_converter)  # type: ignore
     data_pos: int = BinaryProperty(*Meta.data_pos_ptr, converter=Meta.uint32le_converter)  # type: ignore
 
     #        raise RelicToolError(
     #             "Data Size is not specified in SGA v2!"
     #         )  # TODO raise an explicit `not writable` error
-    data_size: None = ConstProperty(None)  # type: ignore
+    data_size: None = ConstProperty(None, RelicToolError("Data Size is not specified in SGA v2!"))  # type: ignore
 
     def __repr__(self) -> str:
         return _repr_obj(
@@ -250,7 +250,7 @@ class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
         SIZE = 268
 
         name_cstring_converter = CStringConverter(
-            encoding="ascii", padding=b"\0", size=name_ptr[1]
+            encoding="ascii", padding="\0", size=name_ptr[1]
         )
         uint32le_converter = IntConverter(length=4, byteorder="little", signed=False)
 
