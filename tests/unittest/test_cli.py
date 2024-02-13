@@ -25,6 +25,55 @@ from utils import create_temp_dataset_fs, get_datasets
 _DATASETS = get_datasets()
 
 
+@dataclass
+class ManifestFileInfo:
+    modified: datetime | None
+    crc: int | None
+    drive: str | None
+    archive_path: str | None
+
+    @classmethod
+    def parse(cls, **kwargs: Any) -> ManifestFileInfo:
+        _MODIFIED = "modified"
+
+        if _MODIFIED in kwargs:
+            kwargs[_MODIFIED] = RelicDateTimeSerializer.unix2datetime(kwargs[_MODIFIED])
+
+        return cls(**kwargs)
+
+
+@dataclass
+class Manifest:
+    toc: Dict[str, Dict[str, ManifestFileInfo]]
+
+    @classmethod
+    def parse(cls, **kwargs: Any) -> Manifest:
+        _FILES = "files"
+
+        if _FILES in kwargs:
+            kwargs[_FILES] = {
+                drive: {
+                    path: ManifestFileInfo.parse(**info)
+                    for path, info in file_manifest.items()
+                }
+                for drive, file_manifest in kwargs[_FILES].items()
+            }
+
+        return cls(**kwargs)
+
+
+def load_manifest(dataset: str, manifest: str) -> Manifest | None:
+    with OSFS(dataset) as fs:
+        try:
+            with fs.opendir("Meta") as meta_dir:
+                if not meta_dir.exists(manifest):
+                    return None
+                data = json.loads(meta_dir.gettext(manifest))
+                return Manifest.parse(**data)
+        except ResourceNotFound:
+            return None
+
+
 @pytest.mark.parametrize("dataset", _DATASETS)
 class TestCLI:
     _FILE_MANIFEST = "manifest.json"
