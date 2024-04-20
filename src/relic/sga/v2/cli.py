@@ -52,10 +52,17 @@ class RelicSgaPackV2Cli(CliPlugin):
         manifest_is_json = splitext(manifest_path)[1].lower() == ".json"
 
         def _check_parts(_path: str) -> bool:
+            if not _path:  # If empty, assume we're done
+                return True
+
             d, f = os.path.split(_path)
 
             if os.path.exists(d):
                 return not os.path.isfile(d)
+            if (
+                _path == d
+            ):  # If, somehow, we try to recurse into ourselves, assume we're done
+                return True
             return _check_parts(d)
 
         if out_path is None:
