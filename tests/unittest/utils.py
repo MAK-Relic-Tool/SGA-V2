@@ -1,11 +1,22 @@
+from __future__ import annotations
+
+import json
 import os
 from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime
 from os.path import join, abspath
-from typing import Optional, Generator, Iterable, List
+from typing import Optional, Generator, Iterable, List, Any, Dict
 
+import pytest
 from fs import open_fs
 from fs.base import FS
 from fs.copy import copy_fs
+from fs.errors import ResourceNotFound
+from fs.osfs import OSFS
+from fs.subfs import SubFS
+
+from relic.sga.v2.serialization import RelicDateTimeSerializer
 
 
 def get_data_path(*parts: str) -> str:
@@ -40,3 +51,61 @@ def create_temp_dataset_fs(
             tmp.writetext(match_path, arciv_txt)
 
         yield tmp
+
+
+@dataclass
+class ManifestFileInfo:
+    modified: datetime | None
+    crc: int | None
+    drive: str | None
+    archive_path: str | None
+
+    @classmethod
+    def parse(cls, **kwargs: Any) -> ManifestFileInfo:
+        _MODIFIED = "modified"
+
+        if _MODIFIED in kwargs:
+            kwargs[_MODIFIED] = RelicDateTimeSerializer.unix2datetime(kwargs[_MODIFIED])
+
+        return cls(**kwargs)
+
+
+@dataclass
+class Manifest:
+    toc: Dict[str, Dict[str, ManifestFileInfo]]
+
+    @classmethod
+    def parse(cls, **kwargs: Any) -> Manifest:
+        _FILES = "files"
+
+        if _FILES in kwargs:
+            kwargs[_FILES] = {
+                drive: {
+                    path: ManifestFileInfo.parse(**info)
+                    for path, info in file_manifest.items()
+                }
+                for drive, file_manifest in kwargs[_FILES].items()
+            }
+
+        return cls(**kwargs)
+
+
+def load_manifest(dataset: str, manifest: str) -> Manifest | None:
+    with OSFS(dataset) as fs:
+        try:
+            with fs.opendir("Meta") as meta_dir:
+                if not meta_dir.exists(manifest):
+                    return None
+                data = json.loads(meta_dir.gettext(manifest))
+                return Manifest.parse(**data)
+        except ResourceNotFound:
+            return None
+
+
+@contextmanager
+def safe_open_folder(fs: FS, folder_name: str) -> SubFS[FS]:
+    if not fs.exists(folder_name):
+        pytest.skip(f"'{folder_name}' folder was not found; skipping validation")
+
+    with fs.opendir(folder_name) as dir:
+        yield dir
