@@ -5,7 +5,7 @@ from os.path import splitext
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-from relic.core.cli import CliPlugin, _SubParsersAction
+from relic.core.cli import CliPlugin, _SubParsersAction, RelicArgParser
 from relic.core.errors import RelicToolError
 from relic.sga.core.cli import _get_file_type_validator
 
@@ -23,7 +23,7 @@ class RelicSgaPackV2Cli(CliPlugin):
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
-            parser = ArgumentParser("v2")
+            parser = RelicArgParser("v2")
         else:
             parser = command_group.add_parser("v2")
 
@@ -169,7 +169,7 @@ class RelicSgaV2Legacy2ArcivCli(CliPlugin):
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
-            parser = ArgumentParser("v2")
+            parser = RelicArgParser("v2")
         else:
             parser = command_group.add_parser("v2")
 
