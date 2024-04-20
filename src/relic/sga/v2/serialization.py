@@ -245,9 +245,9 @@ class SgaTocFileV2Dow(_SgaTocFileV2):
 class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
     class Meta:
         name_ptr = (0, 256)
-        modified_ptr = (260, 4)
-        crc_ptr = (264, 4)
-        SIZE = 268
+        modified_ptr = (256, 4)
+        crc_ptr = (260, 4)
+        SIZE = 264
 
         name_cstring_converter = CStringConverter(
             encoding="ascii", padding="\0", size=name_ptr[1]
