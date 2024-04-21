@@ -3,14 +3,13 @@ from __future__ import annotations
 import itertools
 import logging
 import os
-from os import PathLike
 import time
 import zlib
-from abc import abstractmethod
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime
 from io import BytesIO
+from os import PathLike
 from pathlib import PureWindowsPath
 from threading import RLock
 from types import TracebackType
@@ -27,7 +26,6 @@ from typing import (
     Any,
     Tuple,
     Collection,
-    Generator,
     cast,
     TypeVar,
 )

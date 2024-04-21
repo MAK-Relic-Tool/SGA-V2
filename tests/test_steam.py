@@ -57,7 +57,6 @@ for game in _ALLOWED_GAMES:
             if sga_size <= _MAX_SGA_TEST_SIZE:
                 allowed_list.append(str(sga))
 
-
 _dow_dc_sgas = (
     _installed_all[_DOW_DC],
     _installed_unique[_DOW_DC],
@@ -131,14 +130,15 @@ class GameTests:
                     step: Step
 
                     assert dst_sga.exists(step.path), step.path
-                    with dst_sga.opendir(step.path) as dst_path:
-                        for dir in step.dirs:
-                            dir: Info
-                            assert dst_path.exists(dir.name), dir.name
-                        for file in step.files:
-                            file: Info
-                            assert dst_path.exists(file.name), file.name
-                            with src_sga.opendir(step.path) as src_path:
+                    with src_sga.opendir(step.path) as src_path:
+                        with dst_sga.opendir(step.path) as dst_path:
+                            for dir in step.dirs:
+                                dir: Info
+                                assert dst_path.exists(dir.name), dir.name
+
+                            for file in step.files:
+                                file: Info
+                                assert dst_path.exists(file.name), file.name
                                 with src_path.openbin(file.name) as src_file:
                                     with dst_path.openbin(file.name) as dst_file:
                                         for i, (src_chunk, dst_chunk) in enumerate(
@@ -151,6 +151,10 @@ class GameTests:
                                                 file.name,
                                                 f"Chunk '{i}'",
                                             )
+
+                                src_info = src_path.getinfo(file.name)
+                                dst_info = dst_path.getinfo(file.name)
+                                assert src_info == dst_info, "Info Different!"
 
 
 @pytest.mark.skipif(len(_dow_dc_sgas[0]) == 0, reason=f"'{_DOW_DC}' is not installed.")
