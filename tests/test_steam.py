@@ -1,6 +1,8 @@
 import os
+import tempfile
 from contextlib import contextmanager
 from io import BytesIO
+from os.path import basename
 from pathlib import Path
 from typing import List, Dict, Tuple, Set
 
@@ -8,6 +10,7 @@ import fs
 import pytest
 from fs.info import Info
 from fs.walk import Step
+from relic.core import CLI
 from relic.core.lazyio import read_chunks
 
 from relic.sga.v2.serialization import SgaV2GameFormat
@@ -115,7 +118,7 @@ class GameTests:
                 result = sga.verify_file_crc(file)
                 assert result is True, file
 
-    def test_repack(self, path: str):
+    def test_repack_inline(self, path: str):
         game_format: SgaV2GameFormat = None
         if "Dawn of War" in path:
             game_format = SgaV2GameFormat.DawnOfWar
@@ -125,36 +128,60 @@ class GameTests:
             with _open_sga(path) as src_sga:
                 src_sga.save(handle)
                 dst_sga = EssenceFSV2(handle, parse_handle=True, game=game_format)
+                self._assert_equal(src_sga, dst_sga)
 
-                for step in src_sga.walk():
-                    step: Step
+    def _assert_equal(self, src_sga, dst_sga):
+        for step in src_sga.walk():
+            step: Step
 
-                    assert dst_sga.exists(step.path), step.path
-                    with src_sga.opendir(step.path) as src_path:
-                        with dst_sga.opendir(step.path) as dst_path:
-                            for dir in step.dirs:
-                                dir: Info
-                                assert dst_path.exists(dir.name), dir.name
+            assert dst_sga.exists(step.path), step.path
+            with src_sga.opendir(step.path) as src_path:
+                with dst_sga.opendir(step.path) as dst_path:
+                    for dir in step.dirs:
+                        dir: Info
+                        assert dst_path.exists(dir.name), dir.name
 
-                            for file in step.files:
-                                file: Info
-                                assert dst_path.exists(file.name), file.name
-                                with src_path.openbin(file.name) as src_file:
-                                    with dst_path.openbin(file.name) as dst_file:
-                                        for i, (src_chunk, dst_chunk) in enumerate(
-                                            zip(
-                                                read_chunks(src_file),
-                                                read_chunks(dst_file),
-                                            )
-                                        ):
-                                            assert src_chunk == dst_chunk, (
-                                                file.name,
-                                                f"Chunk '{i}'",
-                                            )
+                    for file in step.files:
+                        file: Info
+                        assert dst_path.exists(file.name), file.name
+                        with src_path.openbin(file.name) as src_file:
+                            with dst_path.openbin(file.name) as dst_file:
+                                for i, (src_chunk, dst_chunk) in enumerate(
+                                    zip(
+                                        read_chunks(src_file),
+                                        read_chunks(dst_file),
+                                    )
+                                ):
+                                    assert src_chunk == dst_chunk, (
+                                        file.name,
+                                        f"Chunk '{i}'",
+                                    )
 
-                                src_info = src_path.getinfo(file.name)
-                                dst_info = dst_path.getinfo(file.name)
-                                assert src_info == dst_info, "Info Different!"
+                        src_info = src_path.getinfo(file.name)
+                        dst_info = dst_path.getinfo(file.name)
+                        assert src_info == dst_info, "Info Different!"
+
+    def test_repack(self, path: str):
+        out_handle = None
+
+        try:
+            out_handle = tempfile.TemporaryFile(
+                "w+b", suffix=basename(path), prefix="MAK-Relic-Tool", delete=False
+            )
+            out_path = out_handle.name
+        finally:
+            if out_handle is not None:
+                out_handle.close()
+
+        try:
+            CLI.run_with("relic", "sga", "repack", "v2", path, out_path)
+
+            with _open_sga(path) as src_sga:
+                with _open_sga(out_path) as dst_sga:
+                    self._assert_equal(src_sga, dst_sga)
+
+        finally:
+            Path(out_path).unlink(missing_ok=True)
 
 
 @pytest.mark.skipif(len(_dow_dc_sgas[0]) == 0, reason=f"'{_DOW_DC}' is not installed.")
