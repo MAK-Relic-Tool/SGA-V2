@@ -107,7 +107,7 @@ class ArcivWriter:
         in_assignment: bool = False,
     ) -> Iterable[str]:
         yield from self._formatted(
-            f"[[{value if not hasattr(value,'__fspath__') else value.__fspath__()}]]",
+            f"[[{value if not hasattr(value, '__fspath__') else value.__fspath__()}]]",
             comma=in_collection,
             newline=in_assignment,
             no_indent=in_assignment,
@@ -185,16 +185,21 @@ class ArcivWriter:
             value, in_assignment=True, in_collection=in_collection
         )
 
-    def tokens(self, data: Dict[str, Any]) -> Iterable[str]:
-        for key, value in data.items():
+    def tokens(self, data: Any) -> Iterable[str]:
+        encoded = self._encoder.default(data)
+        if not isinstance(encoded, dict):
+            raise RelicToolError(
+                "Encoder cannot convert `data` to a dictionary, the root item must be a dictionary."
+            )
+        for key, value in encoded.items():
             yield from self._format_key_value(key, value)
 
-    def write(self, data: Dict[str, Any]) -> str:
+    def write(self, data: Any) -> str:
         with StringIO() as fp:
             self.writef(fp, data)
             return fp.getvalue()
 
-    def writef(self, fp: TextIO, data: Dict[str, Any]) -> None:
+    def writef(self, fp: TextIO, data: Any) -> None:
         for token in self.tokens(data):
             fp.write(token)
 
