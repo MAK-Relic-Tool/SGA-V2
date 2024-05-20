@@ -393,19 +393,19 @@ class TestSgaTocHeaderV2:
     # DRIVE
     def test_read_drive_offset(self, data: SgaTocHeaderData, buffer: bytes):
         with self._get_interpreter(buffer) as interpreter:
-            self._test_offset_read(interpreter.drive, data.drive)
+            self._test_offset_read(interpreter.root_folder, data.drive)
 
     def test_write_drive_offset(self, data: SgaTocHeaderData, buffer: bytes):
         with self._get_interpreter() as interpreter:
-            self._test_offset_write(interpreter.drive, data.drive)
+            self._test_offset_write(interpreter.root_folder, data.drive)
 
     def test_read_drive_count(self, data: SgaTocHeaderData, buffer: bytes):
         with self._get_interpreter(buffer) as interpreter:
-            self._test_count_read(interpreter.drive, data.drive)
+            self._test_count_read(interpreter.root_folder, data.drive)
 
     def test_write_drive_count(self, data: SgaTocHeaderData, buffer: bytes):
         with self._get_interpreter() as interpreter:
-            self._test_count_write(interpreter.drive, data.drive)
+            self._test_count_write(interpreter.root_folder, data.drive)
 
     # FOLDER
     def test_read_folder_offset(self, data: SgaTocHeaderData, buffer: bytes):
