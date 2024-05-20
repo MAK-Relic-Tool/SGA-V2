@@ -2,10 +2,22 @@
 
 from __future__ import annotations
 
+import logging
 import os
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
-from typing import BinaryIO, Optional, Union, Literal, Tuple, Any, Dict
+from typing import (
+    BinaryIO,
+    Optional,
+    Union,
+    Literal,
+    Tuple,
+    Any,
+    Dict,
+    TypeVar,
+    Protocol,
+)
 
 from relic.core.errors import RelicToolError
 from relic.core.lazyio import (
@@ -18,6 +30,7 @@ from relic.core.lazyio import (
     CStringConverter,
     IntConverter,
     ConstProperty,
+    ProxyProperty,
 )
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.hashtools import md5, Hasher
@@ -32,6 +45,49 @@ from relic.sga.core.serialization import (
     SgaFile,
     SgaTocFile,
 )
+
+logger = logging.getLogger(__name__)
+
+
+def log_get_pre_msg(name: str, offset: Optional[int], size: Optional[int]):
+    if offset is not None and size is not None:
+        return f"Getting `{name}` @[{offset}:{offset + size}] ({size}B)"
+    elif offset is not None:
+        return f"Getting `{name}` @[{offset}:???]"
+    elif size is not None:
+        return f"Getting `{name}` ({size}B)"
+    else:
+        return f"Getting `{name}` (Constant / Implied)"
+
+
+def log_get_post_msg(name: str, result: Any):
+    return f"Got `{name}` result: {result}"
+
+
+def LogProperty(
+    binaryProperty: BinaryProperty[_T],
+    name: str,
+    logger: logging.Logger,
+    log_level: Optional[int] = None,
+) -> BinaryProperty[_T]:
+    offset: Optional[int] = binaryProperty._start
+    size: Optional[int] = binaryProperty._size
+
+    if log_level is None:
+        log_level = logging.DEBUG
+
+    def log_get(proxy: BinaryProperty, instance: Any, owner: Any):
+        logger.log(level=log_level, msg=log_get_pre_msg(name, offset, size))
+        result = proxy.__get__(instance, owner)
+        logger.log(level=log_level, msg=log_get_post_msg(name, result))
+        return result
+
+    def log_set(proxy: BinaryProperty, instance: Any, value: _T):
+        logger.log(level=log_level, msg=f"Setting `{name}` to value: `{value}`")
+        proxy.__set__(instance, value)
+        logger.log(level=log_level, msg=f"Set `{name}` to value: `{value}`")
+
+    return ProxyProperty(binaryProperty, log_get, log_set)
 
 
 def _repr_name(t: Any) -> str:
@@ -110,19 +166,43 @@ class SgaHeaderV2(SgaHeader):
         name_converter = CStringConverter("utf-16-le", "\0", name_ptr[1])
         uint32le_converter = IntConverter(4, "little", signed=False)
 
-    file_md5: bytes = BinaryProperty(*Meta.file_md5_ptr, converter=ByteConverter)  # type: ignore
-    name: str = BinaryProperty(*Meta.name_ptr, converter=Meta.name_converter)  # type: ignore
-    toc_md5: bytes = BinaryProperty(*Meta.toc_md5_ptr, converter=ByteConverter)  # type: ignore
+    file_md5: bytes = LogProperty(  # type: ignore
+        BinaryProperty(*Meta.file_md5_ptr, converter=ByteConverter), "file_md5", logger
+    )
+
+    name: str = LogProperty(  # type: ignore
+        BinaryProperty(*Meta.name_ptr, converter=Meta.name_converter), "name", logger
+    )
+
+    toc_md5: bytes = LogProperty(
+        BinaryProperty(*Meta.toc_md5_ptr, converter=ByteConverter), "toc_md5", logger
+    )  # type: ignore
 
     # Todo raise an explicit not writable error
-    toc_pos: int = ConstProperty(Meta.toc_pos, RelicToolError("Header Pos is fixed in SGA v2!"))  # type: ignore
-    toc_size: int = BinaryProperty(*Meta.toc_size_ptr, converter=Meta.uint32le_converter)  # type: ignore
-    data_pos: int = BinaryProperty(*Meta.data_pos_ptr, converter=Meta.uint32le_converter)  # type: ignore
+    toc_pos: int = LogProperty(  # type: ignore
+        ConstProperty(Meta.toc_pos, RelicToolError("Header Pos is fixed in SGA v2!")),
+        "toc_pos",
+        logger,
+    )
+    toc_size: int = LogProperty(  # type: ignore
+        BinaryProperty(*Meta.toc_size_ptr, converter=Meta.uint32le_converter),
+        "toc_size",
+        logger,
+    )
+    data_pos: int = LogProperty(  # type: ignore
+        BinaryProperty(*Meta.data_pos_ptr, converter=Meta.uint32le_converter),
+        "data_pos",
+        logger,
+    )
 
     #        raise RelicToolError(
     #             "Data Size is not specified in SGA v2!"
     #         )  # TODO raise an explicit `not writable` error
-    data_size: None = ConstProperty(None, RelicToolError("Data Size is not specified in SGA v2!"))  # type: ignore
+    data_size: None = LogProperty(  # type: ignore
+        ConstProperty(None, RelicToolError("Data Size is not specified in SGA v2!")),
+        "data_size",
+        logger,
+    )
 
     def __repr__(self) -> str:
         return _repr_obj(
@@ -217,7 +297,8 @@ class _SgaTocFileV2(SgaTocFile, BinaryProxySerializer):
 
     @property
     def storage_type(self) -> StorageType:
-        """The Storage Type that the."""
+        """The Storage Type that determines whether the file is stored as-is, or
+        compressed."""
         value = self._serializer.int.read(*self._FLAGS, **self._INT_FORMAT)  # type: ignore
         value &= self._STORAGE_TYPE_MASK
         value >>= self._STORAGE_TYPE_SHIFT
@@ -242,7 +323,36 @@ class SgaTocFileV2Dow(_SgaTocFileV2):
     _SIZE = _next(*_DECOMP_SIZE)
 
 
-class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
+_T = TypeVar("_T")
+
+
+# UGH; these names :yikes:
+class SgaTocFileDataHeaderV2DowProtocol(Protocol):
+    name: str
+    crc32: int
+    modified: int
+
+
+@dataclass
+class MemSgaTocFileDataHeaderV2Dow(SgaTocFileDataHeaderV2DowProtocol):
+    name: str
+    crc32: int
+    modified: int
+
+    @classmethod
+    def create(cls, name: str, data: bytes, time: Optional[int] = None):
+        from relic.sga.core import hashtools
+
+        crc32 = hashtools.crc32.hash(data)
+        if time is None:
+            now = datetime.now()
+            time = RelicDateTimeSerializer.datetime2unix(now)
+        return MemSgaTocFileDataHeaderV2Dow(name, crc32, time)
+
+
+class LazySgaTocFileDataHeaderV2Dow(
+    BinaryProxySerializer, SgaTocFileDataHeaderV2DowProtocol
+):
     class Meta:
         name_ptr = (0, 256)
         modified_ptr = (256, 4)
@@ -254,8 +364,16 @@ class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
         )
         uint32le_converter = IntConverter(length=4, byteorder="little", signed=False)
 
-    name = BinaryProperty(*Meta.name_ptr, converter=Meta.name_cstring_converter)
-    crc32 = BinaryProperty(*Meta.crc_ptr, converter=Meta.uint32le_converter)
+    name: str = LogProperty(
+        BinaryProperty(*Meta.name_ptr, converter=Meta.name_cstring_converter),
+        "name",
+        logger,
+    )
+    crc32: int = LogProperty(
+        BinaryProperty(*Meta.crc_ptr, converter=Meta.uint32le_converter),
+        "crc32",
+        logger,
+    )
 
     @property
     def modified(self) -> int:
@@ -263,6 +381,7 @@ class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
 
         Measured to the second, fractions of a second are truncated.
         """
+
         buffer = self._serializer.read_bytes(*self.Meta.modified_ptr)
         return RelicUnixTimeSerializer.unpack(buffer)
 
@@ -270,6 +389,45 @@ class SgaTocFileDataHeaderV2Dow(BinaryProxySerializer):
     def modified(self, value: Union[float, int]) -> None:
         buffer = RelicUnixTimeSerializer.pack(value)
         _ = self._serializer.write_bytes(buffer, *self.Meta.modified_ptr)
+
+    def header_is_valid(self) -> bool:
+        def _warn(name: str):
+            logger.warning(
+                f"Failed to parse File Data Header `{name}`, the header may be missing or invalid."
+            )
+
+        try:
+            try:
+                _name = self.name
+            except (RelicToolError, UnicodeDecodeError) as _1:
+                _warn("name")
+                return False
+            try:
+                _crc32 = self.crc32
+            except RelicToolError as _2:
+                _warn("crc32")
+                return False
+            try:
+                _modified = self.modified
+            except RelicToolError as _3:
+                _warn("modified")
+                return False
+
+        except Exception as e:
+            logger.critical(
+                """Encountered an unexpected error while performing the File Data Header's validation check.
+Please submit a bug report if one has not already been submitted.""",
+                exc_info=e,
+            )
+        return True
+
+    def get_valid_header(
+        self, name: str, data: bytes, modified: Optional[int] = None
+    ) -> SgaTocFileDataHeaderV2DowProtocol:
+        if self.header_is_valid():
+            return MemSgaTocFileDataHeaderV2Dow(self.name, self.crc32, self.modified)
+        else:
+            return MemSgaTocFileDataHeaderV2Dow.create(name, data, modified)
 
 
 class SgaTocFileDataV2Dow:
@@ -283,17 +441,28 @@ class SgaTocFileDataV2Dow:
         self._name_window = name_window
         self._data_window = data_window
 
-        size = SgaTocFileDataHeaderV2Dow.Meta.SIZE
+        size = LazySgaTocFileDataHeaderV2Dow.Meta.SIZE
         offset = self._toc_file.data_offset - size
         _data_header_window = BinaryWindow(self._data_window, offset, size)
-        self._data_header = SgaTocFileDataHeaderV2Dow(_data_header_window)
+        _lazy_data_header = LazySgaTocFileDataHeaderV2Dow(_data_header_window)
+
+        # We can safely use our properties here EXCEPT FOR DATA_HEADER PROPS
+        # If we read an invalid data_header we
+        if _lazy_data_header.header_is_valid():
+            self._data_header: SgaTocFileDataHeaderV2DowProtocol = _lazy_data_header
+        else:
+            _name = self.name
+            _data = self.data(True).read(-1)
+            self._data_header: SgaTocFileDataHeaderV2DowProtocol = (
+                MemSgaTocFileDataHeaderV2Dow.create(_name, _data)
+            )
 
     @property
     def name(self) -> str:
         return self._name_window.get_name(self._toc_file.name_offset)
 
     @property
-    def header(self) -> SgaTocFileDataHeaderV2Dow:
+    def header(self) -> LazySgaTocFileDataHeaderV2Dow:
         return self._data_header
 
     def data(self, decompress: bool = True) -> BinaryIO:
@@ -317,6 +486,7 @@ class SgaTocFileV2ImpCreatures(_SgaTocFileV2):
 class SgaV2GameFormat(Enum):
     DawnOfWar = "Dawn Of War"
     ImpossibleCreatures = "Impossible Creatures"
+    Unknown = "Unknown"
 
 
 GAME_FORMAT_TOC_FILE = {
@@ -337,10 +507,14 @@ class SgaTocV2(SgaToc):
         toc_end: int,
         index: int = -1,
     ) -> int:
+        # SGA V2 has a static layout, but we should be lenient on our input
+        """Determines the next table offset from the given index, or the toc end if
+        there are no more tables."""
+
         smallest = toc_end
         ptrs = [
             header.folder.offset,
-            header.drive.offset,
+            header.root_folder.offset,
             header.file.offset,
             header.name.offset,
         ]
@@ -351,15 +525,21 @@ class SgaTocV2(SgaToc):
 
     @classmethod
     def _determine_game(cls, header: SgaTocHeaderV2, toc_end: int) -> SgaV2GameFormat:
+        """
+        Attempts to determine which V2 Specification the file table is using
+        Dawn Of War (DoW) uses a 20 byte block
+        Impossible Creatures: Steam Edition (IC) uses a 17 byte block
+        If the file block is empty; Unknown is used to specify the format could not be determined.
+        """
         # Unfortunately DoW and IC (Steam) have a slightly different file layout
         # DoW is 20 and IC is 17
         # We can determine which via comparing the size of the full block
+        # IFF the file_count is 0, we can't determine the game, but we don't error since it is valid to have 0 files
         file_block_start, file_count = header.file.info
 
         if file_count == 0:
-            raise RelicToolError(
-                f"Game format could not be determined; no files in file block."
-            )
+            logging.debug("Could not determine V2 type (DOW / IC); file count is 0!")
+            return SgaV2GameFormat.Unknown
 
         file_block_end = cls._determine_next_header_block_ptr(
             header, toc_end, index=file_block_start
@@ -382,7 +562,7 @@ class SgaTocV2(SgaToc):
         super().__init__(parent)
         self._header = SgaTocHeaderV2(parent)
         self._drives = SgaTocInfoArea(
-            parent, *self._header.drive.info, cls=SgaTocDriveV2
+            parent, *self._header.root_folder.info, cls=SgaTocDriveV2
         )
         self._folders = SgaTocInfoArea(
             parent, *self._header.folder.info, cls=SgaTocFolderV2
@@ -394,9 +574,9 @@ class SgaTocV2(SgaToc):
             game = self._determine_game(self._header, end)
         self._game_format = game
 
-        self._files = SgaTocInfoArea(
-            parent, *self._header.file.info, cls=GAME_FORMAT_TOC_FILE[self._game_format]
-        )
+        toc_class = GAME_FORMAT_TOC_FILE.get(self._game_format)
+        toc_offset, toc_count = self._header.file.info
+        self._files = SgaTocInfoArea(parent, toc_offset, toc_count, cls=toc_class)
         self._names = SgaNameWindow(parent, *self._header.name.info)
 
     @property
@@ -404,7 +584,7 @@ class SgaTocV2(SgaToc):
         return self._header
 
     @property
-    def drives(self) -> SgaTocInfoArea[SgaTocDrive]:  # type: ignore
+    def root_folders(self) -> SgaTocInfoArea[SgaTocDrive]:  # type: ignore
         return self._drives  # type: ignore
 
     @property
