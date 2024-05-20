@@ -1,6 +1,8 @@
 from ply import yacc
 from ply.yacc import LRParser
 from ply.yacc import YaccError
+from relic.core.errors import RelicToolError
+
 from relic.sga.v2.arciv import lexer
 
 tokens = lexer.tokens
@@ -62,7 +64,7 @@ def p_dict(p):
 
 
 def p_error(p):
-    raise YaccError(p)
+    raise RelicToolError(f"Parsing Error: `{p}`") from YaccError(p)
 
 
 def p_dict_kvs(p):
