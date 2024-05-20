@@ -28,6 +28,7 @@ from typing import (
     Collection,
     cast,
     TypeVar,
+    IO,
 )
 
 import fs.errors
@@ -66,7 +67,7 @@ from relic.sga.v2.serialization import (
     SgaV2GameFormat,
     SgaHeaderV2,
     SgaTocHeaderV2,
-    SgaTocFileDataHeaderV2Dow,
+    LazySgaTocFileDataHeaderV2Dow,
     SgaTocDriveV2,
     SgaTocFolderV2,
     SgaTocFileV2ImpCreatures,
@@ -945,7 +946,7 @@ class SgaFsDriveV2(_SgaFsDriveV2):
     ):
         if lazy is not None and mem is not None:
             raise RelicToolError(
-                "Drive trying to be created as both a lazy and in-memory drive!"
+                "Drive trying to be created as both a lazy and in-memory root_folder!"
             )
         if lazy is None and mem is None:
             raise RelicToolError(
@@ -1047,14 +1048,14 @@ class _V2TocDisassembler:
         handle = self.data_block
 
         window_start = handle.tell()
-        window_size = SgaTocFileDataHeaderV2Dow.Meta.SIZE
+        window_size = LazySgaTocFileDataHeaderV2Dow.Meta.SIZE
 
         buffer = b"\0" * window_size
         handle.write(buffer)
 
         # Write Header
         _header_window = BinaryWindow(handle, window_start, window_size)
-        data_header = SgaTocFileDataHeaderV2Dow(_header_window)
+        data_header = LazySgaTocFileDataHeaderV2Dow(_header_window)
         data_header.name = name
         if isinstance(modified, datetime):
             modified = RelicDateTimeSerializer.datetime2unix(modified)
@@ -1279,11 +1280,12 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
     ) -> None:
         # Writes file names in manner mostly consistent with default SGA archives (file names I believe are written in the order that the .arciv file specifies, because we intermediate with pyfilesystem, we can't 1-1 this)
         #   Additionally; this now doesn't write file names, because file names are ALWAYS at the end of the block
-        #       We could write them after writing the file tree; but this wouldn't work with multi-drive sgas
+        #       We could write them after writing the file tree; but this wouldn't work with multi-root_folder sgas
 
         folders = sorted(
             [sub_folder for sub_folder in folder.folders], key=lambda x: x.name
         )
+
         # files = sorted([sub_file.name for sub_file in folder.files])
 
         name = folder.name
@@ -1851,7 +1853,7 @@ class _SgaV2Serializer:
         with BinaryWindow(handle, window_start, window_size) as window:
             toc_header = SgaTocHeaderV2(window)
             areas = [
-                toc_header.drive,
+                toc_header.root_folder,
                 toc_header.folder,
                 toc_header.file,
                 toc_header.name,
@@ -1963,20 +1965,6 @@ class ArcivV2Serializer(_SgaV2Serializer):
         ) as disassembler:
             disassembler.disassemble()
             yield disassembler.get_info()
-
-
-class PackingScanner:
-    class ArchiveHeader:
-        name: str
-
-    class TocItem: ...
-
-    header: ArchiveHeader
-    toc_list: List[TocItem]
-    ...
-
-
-class PackingSettings: ...
 
 
 class SgaFsV2Assembler:
@@ -2135,21 +2123,53 @@ class EssenceSubFsV2(SubFS[EssenceFS]):
 class EssenceFSV2(EssenceFS):
     subfs_class = EssenceSubFsV2  # type: ignore
 
+    @classmethod
+    def open_sga(
+        cls,
+        path: str | PathLike[str] | BinaryIO | bytes,
+        parent_fs: Optional[FS] = None,
+        mode: str = "r",
+    ) -> EssenceFSV2:
+        if isinstance(path, (str, PathLike, bytes)):
+            _mode = Mode(mode)
+
+            handle_mode = _mode.to_platform_bin()
+            if _mode.text:
+                logger.warning(
+                    f"Opening `{path}` with mode `{mode}` (text) is not supported, opening as `{handle_mode}` (binary)"
+                )
+
+            handle: IO
+            if parent_fs is None:
+                handle = open(path, handle_mode)
+            else:
+                handle = parent_fs.open(path, handle_mode)
+        else:
+            if parent_fs is not None:
+                logger.warning(
+                    f"Parent FS is ignored when opening via a binary handle; the handle is passed in directly."
+                )
+
+            handle = cast(path, IO)
+        binary_handle = cast(
+            handle, BinaryIO
+        )  # handle is binary, tell mypy via casting
+        return cls(binary_handle, parse_handle=True, game=None, in_memory=False)
+
     def __init__(
         self,
-        handle: Optional[Union[BinaryIO, str, PathLike[str]]] = None,
+        stream: BinaryIO = None,
         parse_handle: bool = False,
         game: Optional[SgaV2GameFormat] = None,
         in_memory: bool = False,
         *,
-        parent_fs: Optional[FS] = None,
         name: Optional[str] = None,
         verify_header: bool = False,
         verify_file: bool = False,
         editable: bool = True,
     ):
         """
-        :param handle: The backing IO object to read/write to. If not present, the archive is automatically treated as an empty in-memory archive.
+        :param stream: The backing IO object to read/write to. If not present, the archive is automatically treated as an empty in-memory archive.
         :parse_handle: Parses the handle as an SGA file, if false, the archive is treated as an empty in-memory archive.
         :param in_memory: Loads the archive in-memory if the handle is parsed. Does nothing if parse_handle is False.
         :param game: Specifies the game format. Impossible Creatures and Dawn of War use slightly different versions of the V2 specification, this allows the archive to know which version to use if it's ambitious.
@@ -2161,21 +2181,7 @@ class EssenceFSV2(EssenceFS):
         true_handle: Optional[BinaryIO]
         owned: bool = False
 
-        if isinstance(handle, (str, PathLike, bytes)):
-            _mode = "w+b" if editable else "rb"
-            if parent_fs is not None:
-                true_handle = parent_fs.open(handle, _mode)  # type: ignore
-                owned = True
-            else:
-                true_handle = open(handle, _mode)  # type: ignore
-                owned = True
-        else:
-            if parent_fs is not None:
-                logger.warning("ParentFS specified when handle is a BinaryIO")
-            true_handle = handle
-            owned = False
-
-        self._stream = true_handle
+        self._stream = stream
         self._stream_owned = owned
         self._file_md5: Optional[bytes] = None
         self._header_md5: Optional[bytes] = None
@@ -2186,13 +2192,13 @@ class EssenceFSV2(EssenceFS):
         self._update_stream = editable
 
         if parse_handle:
-            if true_handle is None:
+            if stream is None:
                 raise RelicToolError("Cannot parse a null handle!")
 
-            if self._name is None and hasattr(true_handle, "name"):
-                self._name = os.path.basename(true_handle.name)
+            if self._name is None and hasattr(stream, "name"):
+                self._name = os.path.basename(stream.name)
 
-            self._lazy_file = SgaFileV2(true_handle, game_format=game)
+            self._lazy_file = SgaFileV2(stream, game_format=game)
 
             if verify_header:
                 self._lazy_file.verify_header(error=True)
@@ -2293,7 +2299,7 @@ class EssenceFSV2(EssenceFS):
             )
         drives = [
             SgaFsDriveV2(lazy=SgaFsDriveV2Lazy(drive_info, folders))
-            for drive_info in toc.drives
+            for drive_info in toc.root_folders
         ]
         for drive in drives:
             self.add_drive(drive)
@@ -2420,12 +2426,12 @@ class EssenceFSV2(EssenceFS):
             )
         elif len(self._drives) == 0:
             raise fs.errors.OperationFailed(
-                path, msg="Filesystem contains no 'drives' to write to."
+                path, msg="Filesystem contains no 'root_folders' to write to."
             )
         else:
             raise fs.errors.InvalidPath(
                 path,
-                "An alias must be specified when multiple 'drives' are present in the filesystem.",
+                "An alias must be specified when multiple 'root_folders' are present in the filesystem.",
             )
         for part in SgaPathResolver.split_parts(_path):
             current = current.makedir(part, permissions, recreate)  # type: ignore
