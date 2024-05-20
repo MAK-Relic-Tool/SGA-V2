@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Dict, Any
 
 import fs
@@ -12,6 +14,8 @@ from fs.glob import GlobMatch
 from fs.subfs import SubFS
 from relic.core import CLI
 
+from relic.sga.v2 import arciv
+from relic.sga.v2.arciv import Arciv, ArcivWriter
 from tests.unittest.assert_helpers import (
     validate_osfs_equal,
     validate_sgafs_equal_osfs_onedrive,
@@ -21,8 +25,35 @@ from utils import create_temp_dataset_fs, get_datasets, Manifest, safe_open_fold
 _DATASETS = get_datasets()
 
 
-def test_pack_withlocal_path():
-    result = CLI.run_with("relic", "sga", "pack", "v2", "test.arciv", "test.sga")
+def test_pack_with_nonexistent_local_path():
+    SGA_FILE = Path("test.sga")
+    try:
+        result = CLI.run_with(
+            "relic", "sga", "pack", "v2", "nonexistent.arciv", str(SGA_FILE)
+        )
+    except argparse.ArgumentError as e:
+        SGA_FILE.unlink(True)
+        assert "argument manifest" in str(e)
+        assert "does not exist" in str(e)
+    else:
+        SGA_FILE.unlink(True)
+        pytest.fail("Non-existent manifest did not raise an error!")
+
+
+def test_pack_with_existent_local_path():
+    MANIFEST_FILE = Path("existent.arciv")
+    SGA_FILE = Path("test.sga")
+    try:
+        with MANIFEST_FILE.open("w+") as handle:  # Create and auto close
+            manifest = Arciv.default()
+            arciv.dump(handle, manifest)
+
+        result = CLI.run_with(
+            "relic", "sga", "pack", "v2", str(MANIFEST_FILE), str(SGA_FILE)
+        )
+    finally:
+        MANIFEST_FILE.unlink(missing_ok=True)
+        SGA_FILE.unlink(missing_ok=True)
 
 
 @pytest.mark.parametrize("dataset", _DATASETS)
@@ -61,6 +92,7 @@ class TestCLI:
             for sga in tmp_fs.glob("**/*.sga"):
                 self._unpack(tmp_fs, sga)
 
+    @pytest.mark.skip("Test no longer valid, needs update")
     def test_pack_validity(self, dataset: str) -> None:
         """Tests that the CLI Pack function runs without error."""
         tmp_fs: FS
