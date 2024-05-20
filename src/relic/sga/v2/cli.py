@@ -95,7 +95,8 @@ class RelicSgaPackV2Cli(CliPlugin):
         if file_name is None:
             file_name = manifest.ArchiveHeader.ArchiveName + ".sga"
         # Create parent directories
-        os.makedirs(out_path, exist_ok=True)
+        if out_path is not "":  # Local path will lack out_path
+            os.makedirs(out_path, exist_ok=True)
         # Create full path
         full_out_path = os.path.join(out_path, file_name)
         print(f"\tPacking SGA `{full_out_path}`")
