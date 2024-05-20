@@ -140,7 +140,7 @@ class TestEssenceFSOpener:
 #         return request.param
 #
 #     @pytest.fixture(params=[_sample_drives])
-#     def drives(self, request) -> List[str]:
+#     def root_folders(self, request) -> List[str]:
 #         return request.param
 #
 #     @pytest.fixture(params=[*_sample_paths])
@@ -165,10 +165,10 @@ class TestEssenceFSOpener:
 #         with self._open_fs(sga_path) as _:
 #             pass
 #
-#     def test_drives(self, sga_path, drives: List[str]):
+#     def test_drives(self, sga_path, root_folders: List[str]):
 #         with self._open_fs(sga_path) as sga:
 #             unique_drives_in_fs = set([name for (name, _) in sga.iterate_fs()])
-#             unique_drives = set(drives)
+#             unique_drives = set(root_folders)
 #             assert unique_drives_in_fs == unique_drives
 #
 #     def test_path_exists(self, sga_path: str, file_path: str):
