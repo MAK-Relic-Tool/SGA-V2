@@ -18,6 +18,10 @@ class ArcivLayoutError(RelicToolError): ...
 class ArchiveHeader:
     ArchiveName: str
 
+    @classmethod
+    def default(cls):
+        return ArchiveHeader("Default Archive Name")
+
 
 @dataclass
 class TocFileItem(_ArcivSpecialEncodable):
@@ -138,6 +142,10 @@ class Arciv(_ArcivSpecialEncodable):
 
     ArchiveHeader: ArchiveHeader
     TOCList: List[TocItem]
+
+    @classmethod
+    def default(cls):
+        return Arciv(ArchiveHeader.default(), [])
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> Arciv:
