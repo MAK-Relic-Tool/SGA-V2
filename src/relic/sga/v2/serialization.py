@@ -436,6 +436,8 @@ class SgaTocFileDataV2Dow:
         toc_file: SgaTocFile,
         name_window: SgaNameWindow,
         data_window: BinaryWindow,
+        has_data_header: Optional[bool] = False,
+        has_safe_data_header: Optional[bool] = False,
     ):
         self._toc_file = toc_file
         self._name_window = name_window
@@ -448,7 +450,9 @@ class SgaTocFileDataV2Dow:
 
         # We can safely use our properties here EXCEPT FOR DATA_HEADER PROPS
         # If we read an invalid data_header we
-        if _lazy_data_header.header_is_valid():
+        if has_safe_data_header or (
+            has_data_header and _lazy_data_header.header_is_valid()
+        ):
             self._data_header: SgaTocFileDataHeaderV2DowProtocol = _lazy_data_header
         else:
             _name = self.name
@@ -462,7 +466,7 @@ class SgaTocFileDataV2Dow:
         return self._name_window.get_name(self._toc_file.name_offset)
 
     @property
-    def header(self) -> LazySgaTocFileDataHeaderV2Dow:
+    def header(self) -> SgaTocFileDataHeaderV2DowProtocol:
         return self._data_header
 
     def data(self, decompress: bool = True) -> BinaryIO:
@@ -619,6 +623,23 @@ class SgaFileV2(SgaFile):
         self._data_window = BinaryWindow(parent, _data_start, _data_size)
         self._toc = SgaTocV2(self._header_window, game=game_format)
 
+        _expected_data_size = self.__determine_expected_data_window_size()
+        self._has_file_data_headers = _expected_data_size <= _data_size
+        self._has_safe_file_data_headers = _expected_data_size == _data_size
+        logger.debug(
+            f"File `{self._meta.name}` has {'' if self._has_file_data_headers else 'No '} {'Exact ' if self._has_safe_file_data_headers else ''}Headers"
+        )
+
+    def __determine_expected_data_window_size(self) -> int:
+        total_header_size = (
+            len(self._toc.files) * LazySgaTocFileDataHeaderV2Dow.Meta.SIZE
+        )
+        total_data_size = 0
+        for file in self._toc.files:
+            file: SgaTocFile
+            total_data_size += file.compressed_size
+        return total_header_size + total_data_size
+
     def __verify(
         self,
         cached: bool,
@@ -683,3 +704,11 @@ class SgaFileV2(SgaFile):
     @property
     def data_block(self) -> BinaryWindow:
         return self._data_window
+
+    @property
+    def has_file_data_header(self) -> bool:
+        return self._has_file_data_headers
+
+    @property
+    def has_safe_file_data_header(self) -> bool:
+        return self._has_safe_file_data_headers

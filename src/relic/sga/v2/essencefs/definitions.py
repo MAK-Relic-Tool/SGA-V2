@@ -2282,11 +2282,17 @@ class EssenceFSV2(EssenceFS):
         files = [
             SgaFsFileV2(
                 lazy=SgaFsFileV2Lazy(
-                    file,
-                    SgaTocFileDataV2Dow(file, name_window, data_window),
+                    toc_file,
+                    SgaTocFileDataV2Dow(
+                        toc_file,
+                        name_window,
+                        data_window,
+                        has_data_header=file.has_file_data_header,
+                        has_safe_data_header=file.has_safe_file_data_header,
+                    ),
                 )
             )
-            for file in toc.files
+            for toc_file in toc.files
         ]
         folders: List[SgaFsFolderV2] = []
         for folder in toc.folders:
