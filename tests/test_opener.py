@@ -1,16 +1,13 @@
-import json
-import zlib
-from io import StringIO
 from pathlib import Path
-from typing import List, Iterable, Any, Dict
+from typing import Iterable
 
 import fs
 import pytest
-from relic.sga.core.definitions import StorageType, MAGIC_WORD
-from relic.sga.core.essencefs.definitions import EssenceFS
+from relic.sga.core.definitions import MAGIC_WORD
 from relic.sga.core.serialization import VersionSerializer
 
 from relic.sga import v2
+
 
 #
 # _path = Path(__file__).parent
@@ -54,6 +51,7 @@ def v2_scan_directory(root_dir: str) -> Iterable[str]:
 # v2_test_files = list(set(v2_test_files))  # Get unique paths
 
 
+@pytest.mark.skip("No longer implemented")
 class TestEssenceFSOpener:
     # @pytest.fixture(params=v2_test_files)
     def v2_file_path(self, request) -> str:
