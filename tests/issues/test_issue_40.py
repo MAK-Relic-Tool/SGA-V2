@@ -56,8 +56,6 @@ _ARGS2 = [
     for (a, b) in _ARGS
 ]
 
-_ = _ARGS2
-
 
 @pytest.mark.parametrize(["args", "err"], [*_ARGS, *_ARGS2])
 def test_argparse_error(args: Iterable[str], err: ArgumentError):
