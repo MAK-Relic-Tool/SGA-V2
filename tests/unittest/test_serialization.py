@@ -121,7 +121,11 @@ _TEST_MD5_EIGEN = [
 ]
 
 
-@pytest.mark.parametrize(["name", "value", "expected"], _TEST_MD5_EIGEN)
+@pytest.mark.parametrize(
+    ["name", "value", "expected"],
+    _TEST_MD5_EIGEN,
+    ids=[f"{_[0]}-{_[1].hex()}-{_[2].hex()}" for _ in _TEST_MD5_EIGEN],
+)
 def test_md5_eigen(name: str, value: bytes, expected: bytes):
     assert value == expected
 
@@ -172,6 +176,17 @@ class SgaHeaderData:
             self.file_md5, self.name, self.header_md5, self.header_size, self.data_pos
         )
 
+    def generate_safe_test_id(self) -> str:
+        return "-".join(
+            [
+                self.file_md5.hex(),
+                self.name,
+                self.header_md5.hex(),
+                str(self.header_size),
+                str(self.data_pos),
+            ]
+        )
+
 
 __TEST_SGA_HEADER_DATA = [
     SgaHeaderData(
@@ -187,7 +202,11 @@ __TEST_SGA_HEADER_DATA = [
 _TEST_SGA_HEADER_DATA = [(data, data.build_buffer()) for data in __TEST_SGA_HEADER_DATA]
 
 
-@pytest.mark.parametrize(["data", "buffer"], _TEST_SGA_HEADER_DATA)
+@pytest.mark.parametrize(
+    ["data", "buffer"],
+    _TEST_SGA_HEADER_DATA,
+    ids=[_[0].generate_safe_test_id() for _ in _TEST_SGA_HEADER_DATA],
+)
 class TestSgaHeaderV2:
     def test_read_file_md5(self, data: SgaHeaderData, buffer: bytes):
         with BytesIO(buffer) as stream:
@@ -524,6 +543,19 @@ class SgaTocDriveData:
             self.root_folder,
         )
 
+    def generate_safe_test_id(self):
+        return "-".join(
+            [
+                self.alias,
+                self.name,
+                str(self.first_folder),
+                str(self.last_folder),
+                str(self.first_file),
+                str(self.last_file),
+                str(self.root_folder),
+            ]
+        )
+
 
 __TEST_SGA_TOC_DRIVE_DATA = [
     SgaTocDriveData("data", "Alpha", 0, 1, 2, 3, 0),
@@ -540,7 +572,11 @@ _TEST_SGA_TOC_DRIVE_DATA = [
 ]
 
 
-@pytest.mark.parametrize(["data", "buffer"], _TEST_SGA_TOC_DRIVE_DATA)
+@pytest.mark.parametrize(
+    ["data", "buffer"],
+    _TEST_SGA_TOC_DRIVE_DATA,
+    ids=[_[0].generate_safe_test_id() for _ in _TEST_SGA_TOC_DRIVE_DATA],
+)
 class TestSgaTocDriveV2:
     def _get_empty(self):
         return build_sga_toc_drive_empty_buffer()
