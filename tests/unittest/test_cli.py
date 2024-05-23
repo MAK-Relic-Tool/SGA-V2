@@ -3,19 +3,16 @@ from __future__ import annotations
 import argparse
 import json
 import os
-from contextlib import contextmanager
 from pathlib import Path
-from typing import Dict, Any
 
 import fs
 import pytest
 from fs.base import FS
 from fs.glob import GlobMatch
-from fs.subfs import SubFS
 from relic.core import CLI
 
 from relic.sga.v2 import arciv
-from relic.sga.v2.arciv import Arciv, ArcivWriter
+from relic.sga.v2.arciv import Arciv
 from tests.unittest.assert_helpers import (
     validate_osfs_equal,
     validate_sgafs_equal_osfs_onedrive,
