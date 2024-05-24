@@ -63,8 +63,6 @@ class TestEssenceFSOpener:
             pass
 
 
-#
-#
 # # Hack to get "SampleSGA-v2" from the sample data
 # _sample_path_on_disk = [f for f in v2_test_files if "SampleSGA-v2-Oct-15-2023.sga" in f][0]
 # _sample_drives = ["test"]
