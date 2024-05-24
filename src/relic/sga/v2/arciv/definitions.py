@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import logging
 from dataclasses import dataclass
 from os import PathLike
 from typing import Dict, Any, List, Union, Optional
@@ -9,6 +10,8 @@ from relic.core.errors import RelicToolError
 from relic.sga.core.definitions import StorageType
 
 from relic.sga.v2.arciv.writer import _ArcivSpecialEncodable
+
+logger = logging.getLogger(__name__)
 
 
 class ArcivLayoutError(RelicToolError): ...
@@ -32,6 +35,7 @@ class TocFileItem(_ArcivSpecialEncodable):
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> TocFileItem:
+        logger.debug(f"Parsing {cls.__name__} : {d}")
         try:
             storage_value: int = d["Store"]
             if storage_value == -1:
@@ -47,8 +51,10 @@ class TocFileItem(_ArcivSpecialEncodable):
             raise ArcivLayoutError from e
 
     def to_parser_dict(self) -> Any:
+        logger.debug(f"Converting {self.__class__.__name__} to dictionary")
         obj = dataclasses.asdict(self)
         obj["Store"] = self.Store.value if self.Store is not None else -1
+        logger.debug(f"Converted {self.__class__.__name__} to {obj}")
         return obj
 
 
@@ -66,6 +72,7 @@ class TocFolderItem:
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> TocFolderItem:
+        logger.debug(f"Parsing {cls.__name__} : {d}")
         try:
             files = [TocFileItem.from_parser(file) for file in d["Files"]]
             folders = [TocFolderItem.from_parser(folder) for folder in d["Folders"]]
@@ -112,6 +119,7 @@ class TocHeader:
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> TocHeader:
+        logger.debug(f"Parsing {cls.__name__} : {d}")
         try:
             storage = [TocStorage.from_parser(item) for item in d["Storage"]]
             kwargs = d.copy()
@@ -128,6 +136,7 @@ class TocItem:
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> TocItem:
+        logger.debug(f"Parsing {cls.__name__} : {d}")
         try:
             toc_header = TocHeader.from_parser(d["TOCHeader"])
             root_folder = TocFolderItem.from_parser(d["RootFolder"])
@@ -150,6 +159,7 @@ class Arciv(_ArcivSpecialEncodable):
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> Arciv:
         """Converts a parser result to a formatted."""
+        logger.debug(f"Parsing {cls.__name__} : {d}")
         try:
             root_dict = d["Archive"]
             header_dict = root_dict["ArchiveHeader"]
@@ -164,4 +174,5 @@ class Arciv(_ArcivSpecialEncodable):
             raise ArcivLayoutError from e
 
     def to_parser_dict(self) -> Dict[str, Any]:
+        logger.debug(f"Converting {self.__name__} to dictionary")
         return {"Archive": dataclasses.asdict(self)}
