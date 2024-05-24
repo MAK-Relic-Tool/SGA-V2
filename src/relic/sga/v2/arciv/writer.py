@@ -4,10 +4,13 @@ import dataclasses
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import StringIO
+from logging import getLogger
 from os import PathLike
 from typing import Optional, Iterable, Union, List, Dict, Any, TextIO, Iterator
 
 from relic.core.errors import RelicToolError
+
+logger = getLogger(__name__)
 
 
 @dataclass
@@ -48,8 +51,10 @@ class ArcivWriter:
     @contextmanager
     def _enter_indent(self) -> Iterator[None]:
         self._indent_level += 1
+        logger.debug(f"Entering Indent `{self._indent_level}`")
         yield None
         self._indent_level -= 1
+        logger.debug(f"Exiting Indent `{self._indent_level}`")
 
     def _formatted(
         self,
@@ -58,6 +63,10 @@ class ArcivWriter:
         comma: bool = False,
         no_indent: bool = False,
     ) -> Iterable[str]:
+        logger.debug(
+            f"Formatting `{values}` (newline:{newline}, comma:{comma}, no_indent:{no_indent}, _indent_level:{self._indent_level})"
+        )
+
         if (
             not no_indent
             and self._settings.has_indent
@@ -78,6 +87,9 @@ class ArcivWriter:
     def _format_str(
         self, value: str, *, in_collection: bool = False, in_assignment: bool = False
     ) -> Iterable[str]:
+        logger.debug(
+            f"Formatting String `{value}` (in_collection:{in_collection}, in_assignment:{in_assignment})"
+        )
         yield from self._formatted(
             f'"{value}"',
             comma=in_collection,
@@ -92,6 +104,9 @@ class ArcivWriter:
         in_collection: bool = False,
         in_assignment: bool = False,
     ) -> Iterable[str]:
+        logger.debug(
+            f"Formatting Number `{value}` (in_collection:{in_collection}, in_assignment:{in_assignment})"
+        )
         yield from self._formatted(
             str(value),
             comma=in_collection,
@@ -106,6 +121,9 @@ class ArcivWriter:
         in_collection: bool = False,
         in_assignment: bool = False,
     ) -> Iterable[str]:
+        logger.debug(
+            f"Formatting Path `{value}` (in_collection:{in_collection}, in_assignment:{in_assignment})"
+        )
         yield from self._formatted(
             f"[[{value if not hasattr(value, '__fspath__') else value.__fspath__()}]]",
             comma=in_collection,
@@ -120,6 +138,9 @@ class ArcivWriter:
         in_collection: bool = False,
         in_assignment: bool = False,
     ) -> Iterable[str]:
+        logger.debug(
+            f"Formatting Collection `{encoded}` (in_collection:{in_collection}, in_assignment:{in_assignment})"
+        )
         if in_assignment:
             yield from self._formatted(newline=True)
         if isinstance(encoded, list):
@@ -153,6 +174,9 @@ class ArcivWriter:
         in_assignment: bool = False,
         encode: bool = True,
     ) -> Iterable[str]:
+        logger.debug(
+            f"Formatting Item `{value}` (in_collection:{in_collection}, in_assignment:{in_assignment}, encode:{encode})"
+        )
         encoded = self._encoder.default(value) if encode else value
         if isinstance(encoded, (list, dict)):
             yield from self._format_collection(
@@ -178,6 +202,9 @@ class ArcivWriter:
     def _format_key_value(
         self, key: str, value: Any, *, in_collection: bool = False
     ) -> Iterable[str]:
+        logger.debug(
+            f"Formatting Key/Value `{key}`/`{value}` (in_collection:{in_collection})"
+        )
         yield from self._formatted(key, "=")
         if self._settings.has_whitespace:
             yield self._settings.whitespace  # type: ignore
@@ -186,6 +213,7 @@ class ArcivWriter:
         )
 
     def tokens(self, data: Any) -> Iterable[str]:
+        logger.debug(f"Iterating Tokens on {data}")
         encoded = self._encoder.default(data)
         if not isinstance(encoded, dict):
             raise RelicToolError(
@@ -195,11 +223,13 @@ class ArcivWriter:
             yield from self._format_key_value(key, value)
 
     def write(self, data: Any) -> str:
+        logger.debug(f"Writing Arciv data {data} to string")
         with StringIO() as fp:
             self.writef(fp, data)
             return fp.getvalue()
 
     def writef(self, fp: TextIO, data: Any) -> None:
+        logger.debug(f"Writing Arciv data {data} to file {fp}")
         for token in self.tokens(data):
             fp.write(token)
 
