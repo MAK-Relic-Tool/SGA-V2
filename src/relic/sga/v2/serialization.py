@@ -449,12 +449,15 @@ class SgaTocFileDataV2Dow:
         _lazy_data_header = LazySgaTocFileDataHeaderV2Dow(_data_header_window)
 
         # We can safely use our properties here EXCEPT FOR DATA_HEADER PROPS
-        # If we read an invalid data_header we
         if has_safe_data_header or (
             has_data_header and _lazy_data_header.header_is_valid()
         ):
+            logger.debug(
+                f"File `{self.name}` {'has' if has_safe_data_header else 'may have'} a Data Header"
+            )
             self._data_header: SgaTocFileDataHeaderV2DowProtocol = _lazy_data_header
         else:
+            logger.debug(f"File `{self.name}` is missing its Data Header")
             _name = self.name
             _data = self.data(True).read(-1)
             self._data_header: SgaTocFileDataHeaderV2DowProtocol = (
@@ -470,6 +473,9 @@ class SgaTocFileDataV2Dow:
         return self._data_header
 
     def data(self, decompress: bool = True) -> BinaryIO:
+        logger.debug(
+            f"Reading File Data from the Data Window (decompress={decompress})"
+        )
         offset = self._toc_file.data_offset
         size = self._toc_file.compressed_size
         window = BinaryWindow(self._data_window, offset, size)
@@ -668,6 +674,7 @@ class SgaFileV2(SgaFile):
         return getattr(self, cache_name)  # type: ignore
 
     def verify_file(self, cached: bool = True, error: bool = False) -> bool:
+        logger.debug(f"Verifying `{self._meta.name}` Header MD5")
         NAME = "__verified_file"
         return self.__verify(
             cached=cached,
@@ -679,7 +686,8 @@ class SgaFileV2(SgaFile):
         )
 
     def verify_header(self, cached: bool = True, error: bool = False) -> bool:
-        NAME = "__verified_file"
+        logger.debug(f"Verifying `{self._meta.name}` Header MD5")
+        NAME = "__verified_header"
         return self.__verify(
             cached=cached,
             error=error,
