@@ -119,6 +119,7 @@ class SgaPathResolver:
 
     @classmethod
     def build(cls, *path: str, alias: Optional[str] = None) -> str:
+        logger.debug(f"Building path given `{path}` & alias: `{alias}`")
         full_path = cls.join(*path)
         full_path = cls.fix_case(full_path)
         if alias:
@@ -131,6 +132,7 @@ class SgaPathResolver:
 
     @classmethod
     def parse(cls, path: str) -> Tuple[Optional[str], str]:
+        logger.debug(f"Parsing path `{path}` into alias/path tuple")
         if ":" in path:
             alias, path = path.split(":", maxsplit=1)
         else:
@@ -139,14 +141,19 @@ class SgaPathResolver:
 
     @classmethod
     def fix_seperator(cls, path: str) -> str:
+        logger.debug(f"Fixing Seperator in `{path}` (`{cls.INV_SEP}` => `{cls.SEP}`)")
         return path.replace(cls.INV_SEP, cls.SEP)
 
     @classmethod
     def fix_case(cls, path: str) -> str:
+        logger.debug(f"Fix Case in `{path}` (`upper` => `lower`)")
         return path.lower()
 
     @classmethod
     def split_parts(cls, path: str, include_root: bool = True) -> List[str]:
+        logger.debug(
+            f"Separating `{path}` into parts{' (including root)' if include_root else ''}"
+        )
         path = cls.fix_seperator(path)
         path = cls.fix_case(path)
 
@@ -168,6 +175,9 @@ class SgaPathResolver:
 
     @classmethod
     def join(cls, *parts: str, add_root: bool = False) -> str:
+        logger.debug(
+            f"Joining `{parts}`{' (and adding root `' + cls.ROOT + '`)' if add_root else ''}"
+        )
         fixed_parts = (cls.fix_seperator(part) for part in parts)
         result = ""
         for part in fixed_parts:
@@ -184,6 +194,7 @@ class SgaPathResolver:
 
     @classmethod
     def split(cls, path: str) -> Tuple[str, str]:
+        logger.debug(f"Splitting `{path}` into head, tail")
         parts = cls.split_parts(path)
         if len(parts) > 0:
             return cls.join(*parts[:-1]), parts[-1]
@@ -191,6 +202,7 @@ class SgaPathResolver:
 
     @classmethod
     def strip_root(cls, path: str) -> str:
+        logger.debug(f"Stripping root from `{path}`")
         if len(path) > 0 and path[0] == cls.ROOT:
             return path[1:]
         else:
@@ -198,10 +210,12 @@ class SgaPathResolver:
 
     @classmethod
     def basename(cls, path: str) -> str:
+        logger.debug(f"Getting basename of `{path}`")
         return cls.split(path)[1]
 
     @classmethod
     def dirname(cls, path: str) -> str:
+        logger.debug(f"Getting dirname of `{path}`")
         return cls.split(path)[0]
 
 
@@ -299,6 +313,7 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
         return self._info.storage_type
 
     def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
+        logger.debug(f"Getting Info for `{self.name}` (LazyInfo)")
         if namespaces is None:
             namespaces = []
 
@@ -335,6 +350,7 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
             yield self._data_info.data(decompress=True)
 
     def verify_crc32(self, error: bool) -> bool:
+        logger.debug(f"Verifying CRC32 for `{self.name}` (LazyFile)")
         # Locking should be handled by opening file, no need to lock here
         with self.openbin("r") as stream:
             expected = self._data_info.header.crc32
@@ -425,6 +441,7 @@ class SgaFsFileV2Mem(_SgaFsFileV2):
         return RelicDateTimeSerializer.datetime2unix(self._modified)
 
     def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
+        logger.debug(f"Getting Info for `{self.name}` (MemFile)")
         if namespaces is None:
             namespaces = []
 
@@ -438,6 +455,7 @@ class SgaFsFileV2Mem(_SgaFsFileV2):
         return Info(info)
 
     def setinfo(self, info: Mapping[str, Mapping[str, object]]) -> None:
+        logger.debug(f"Setting (Updating) Info for `{self.name}` (MemFile) to `{info}`")
         if NS_DETAILS in info:
             self._modified = info[NS_DETAILS]["modified"]  # type: ignore
 
@@ -1011,6 +1029,7 @@ class _V2TocDisassembler:
         self._drive_count = 0
 
     def _write_name_to_table(self, table: Dict[str, int], name: str) -> int:
+        logger.debug(f"Writing `{name}` to name table `{table}`")
         name = SgaPathResolver.fix_seperator(name)
         _, name = SgaPathResolver.parse(name)
         name = SgaPathResolver.strip_root(name)
@@ -1034,6 +1053,7 @@ class _V2TocDisassembler:
         return result
 
     def write_name_in_drive(self, drive: str, name: str = SgaPathResolver.ROOT) -> int:
+        logger.debug(f"Writing `{name}` in drive `{drive}`")
         name_table = self._get_or_make_name_table(drive)
         return self._write_name_to_table(name_table, name.lower())
 
