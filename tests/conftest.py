@@ -33,14 +33,23 @@ def pytest_runtest_setup(item):
         "..",
         "__pytest-logs__",
         clean_name,
-        f"{datetime.now().strftime('%Y-%m-%dT-%H-%M-%S')}",
+        f"{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}",
     ).resolve()
     safe_name = str(filename) + ".log"
     Path(safe_name).parent.mkdir(parents=True, exist_ok=True)
     logger = logging.getLogger()
-    logger.setLevel(logging.WARNING)
+    loglevel_name: str = os.getenv("PYTEST-LOGLEVEL", "warning")
+    loglevel: int = {
+        "notset": logging.NOTSET,
+        "debug": logging.DEBUG,
+        "warning": logging.WARNING,
+        "error": logging.ERROR,
+        "critical": logging.CRITICAL,
+    }.get(loglevel_name.lower(), logging.WARNING)
+
+    logger.setLevel(loglevel)
     f = logging.Formatter(
-        fmt="%(levelname)s:%(name)s::%(filename)s:L%(lineno)d:\t%(message)s (%(asctime)s)",
+        fmt="%(levelname)s::%(asctime)s::%(name)s::%(filename)s:L%(lineno)d:\t%(message)s",
         datefmt="%Y-%m-%d %H:%M:%S",
     )
     h = RotatingFileHandler(
@@ -52,5 +61,5 @@ def pytest_runtest_setup(item):
     h.setFormatter(f)
     h.setLevel(logging.DEBUG)
     logger.addHandler(h)
-    # raise NotImplementedError((str(filename),str(safename)))
+    # raise NotImplementedError((str(filename), str(safename)))
     yield
