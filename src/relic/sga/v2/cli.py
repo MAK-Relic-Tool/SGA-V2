@@ -53,7 +53,7 @@ def _add_logging_to_parser(
     )
     parser.add_argument(
         "--loglevel",
-        help="Path to the log file, if one is generated. Defaults to `info`",
+        help="Verbosity of the log. Defaults to `info`",
         nargs="?",
         required=False,
         default="info",
