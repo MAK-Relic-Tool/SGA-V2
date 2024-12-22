@@ -25,12 +25,14 @@ from relic.core.lazyio import (
     ZLibFileReader,
     tell_end,
     BinaryProxySerializer,
-    BinaryProperty,
     ByteConverter,
     CStringConverter,
     IntConverter,
+)
+from relic.core.properties import (
+    BinaryProperty,
     ConstProperty,
-    ProxyProperty,
+    get_BinaryProxySerializer_accessor, LogProperty,
 )
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.hashtools import md5, Hasher
@@ -48,46 +50,6 @@ from relic.sga.core.serialization import (
 
 logger = logging.getLogger(__name__)
 
-
-def log_get_pre_msg(name: str, offset: Optional[int], size: Optional[int]):
-    if offset is not None and size is not None:
-        return f"Getting `{name}` @[{offset}:{offset + size}] ({size}B)"
-    elif offset is not None:
-        return f"Getting `{name}` @[{offset}:???]"
-    elif size is not None:
-        return f"Getting `{name}` ({size}B)"
-    else:
-        return f"Getting `{name}` (Constant / Implied)"
-
-
-def log_get_post_msg(name: str, result: Any):
-    return f"Got `{name}` result: {result}"
-
-
-def LogProperty(
-    binaryProperty: BinaryProperty[_T],
-    name: str,
-    logger: logging.Logger,
-    log_level: Optional[int] = None,
-) -> BinaryProperty[_T]:
-    offset: Optional[int] = binaryProperty._start
-    size: Optional[int] = binaryProperty._size
-
-    if log_level is None:
-        log_level = logging.DEBUG
-
-    def log_get(proxy: BinaryProperty, instance: Any, owner: Any):
-        logger.log(level=log_level, msg=log_get_pre_msg(name, offset, size))
-        result = proxy.__get__(instance, owner)
-        logger.log(level=log_level, msg=log_get_post_msg(name, result))
-        return result
-
-    def log_set(proxy: BinaryProperty, instance: Any, value: _T):
-        logger.log(level=log_level, msg=f"Setting `{name}` to value: `{value}`")
-        proxy.__set__(instance, value)
-        logger.log(level=log_level, msg=f"Set `{name}` to value: `{value}`")
-
-    return ProxyProperty(binaryProperty, log_get, log_set)
 
 
 def _repr_name(t: Any) -> str:
@@ -152,6 +114,8 @@ _FILE_MD5_EIGEN = b"E01519D6-2DB7-4640-AF54-0A23319C56C3"
 _TOC_MD5_EIGEN = b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF"
 
 
+_accessor = get_BinaryProxySerializer_accessor()
+
 class SgaHeaderV2(SgaHeader):
     class Meta:
         file_md5_ptr = (0, 16)
@@ -167,15 +131,15 @@ class SgaHeaderV2(SgaHeader):
         uint32le_converter = IntConverter(4, "little", signed=False)
 
     file_md5: bytes = LogProperty(  # type: ignore
-        BinaryProperty(*Meta.file_md5_ptr, converter=ByteConverter), "file_md5", logger
+        BinaryProperty(_accessor,Meta.file_md5_ptr, converter=ByteConverter), "file_md5", logger
     )
 
     name: str = LogProperty(  # type: ignore
-        BinaryProperty(*Meta.name_ptr, converter=Meta.name_converter), "name", logger
+        BinaryProperty(_accessor,Meta.name_ptr, converter=Meta.name_converter), "name", logger
     )
 
     toc_md5: bytes = LogProperty(
-        BinaryProperty(*Meta.toc_md5_ptr, converter=ByteConverter), "toc_md5", logger
+        BinaryProperty(_accessor,Meta.toc_md5_ptr, converter=ByteConverter), "toc_md5", logger
     )  # type: ignore
 
     # Todo raise an explicit not writable error
@@ -185,19 +149,16 @@ class SgaHeaderV2(SgaHeader):
         logger,
     )
     toc_size: int = LogProperty(  # type: ignore
-        BinaryProperty(*Meta.toc_size_ptr, converter=Meta.uint32le_converter),
+        BinaryProperty(_accessor, Meta.toc_size_ptr, converter=Meta.uint32le_converter),
         "toc_size",
         logger,
     )
     data_pos: int = LogProperty(  # type: ignore
-        BinaryProperty(*Meta.data_pos_ptr, converter=Meta.uint32le_converter),
+        BinaryProperty(_accessor, Meta.data_pos_ptr, converter=Meta.uint32le_converter),
         "data_pos",
         logger,
     )
 
-    #        raise RelicToolError(
-    #             "Data Size is not specified in SGA v2!"
-    #         )  # TODO raise an explicit `not writable` error
     data_size: None = LogProperty(  # type: ignore
         ConstProperty(None, RelicToolError("Data Size is not specified in SGA v2!")),
         "data_size",
@@ -572,7 +533,7 @@ class SgaTocV2(SgaToc):
         super().__init__(parent)
         self._header = SgaTocHeaderV2(parent)
         self._drives = SgaTocInfoArea(
-            parent, *self._header.root_folder.info, cls=SgaTocDriveV2
+            parent, *self._header.drive.info, cls=SgaTocDriveV2
         )
         self._folders = SgaTocInfoArea(
             parent, *self._header.folder.info, cls=SgaTocFolderV2

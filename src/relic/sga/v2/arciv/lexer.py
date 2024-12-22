@@ -68,7 +68,7 @@ def t_comma(t: LexToken) -> LexToken:
 
 
 def t_STRING(t: LexToken) -> LexToken:
-    r"\".*?\" "
+    r"""\".*?\" """
     stripped = t.value[1:-1]  # strip quote
     t.value = stripped
     return t
