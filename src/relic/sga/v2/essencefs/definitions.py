@@ -287,7 +287,9 @@ class PureSgaPath(PurePath):
 
     @property
     def tail(self) -> str:
-        return self._flavour.sep.join(self._tail)  # type: ignore
+        return self._flavour.sep.join(
+            self._tail  # pylint: disable = E1101 # type: ignore
+        )
 
 
 class BoundPath(pathlib.Path):
@@ -312,10 +314,10 @@ class BoundPath(pathlib.Path):
         for name in self._boundfs.listdir(str(self)):
             yield _DirEntry(self._make_child_relpath(name))  # type: ignore
 
-    def owner(self) -> str:
+    def owner(self, *, follow_symlinks: bool = True) -> str:
         raise NotImplementedError
 
-    def group(self) -> str:
+    def group(self, *, follow_symlinks: bool = True) -> str:
         raise NotImplementedError
 
     def touch(self, mode: int = 0o666, exist_ok: bool = True) -> None:
