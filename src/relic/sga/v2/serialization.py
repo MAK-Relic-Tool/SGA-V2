@@ -252,41 +252,70 @@ class _SgaTocFileV2(SgaTocFile, BinaryProxySerializer):
 
     @property
     def name_offset(self) -> int:  # name_rel_pos
-        return self._serializer.int.read(*self._NAME_OFFSET, **self._INT_FORMAT)  # type: ignore
+        return self._serializer.int.read(
+            *self._NAME_OFFSET,  # pylint: disable=E1133
+            **self._INT_FORMAT,  # type: ignore
+        )
 
     @name_offset.setter
     def name_offset(self, value: int) -> None:
-        self._serializer.int.write(value, *self._NAME_OFFSET, **self._INT_FORMAT)  # type: ignore
+        self._serializer.int.write(
+            value,
+            *self._NAME_OFFSET,  # pylint: disable=E1133
+            **self._INT_FORMAT,  # type: ignore
+        )
 
     @property
     def data_offset(self) -> int:  # data_rel_pos
-        return self._serializer.int.read(*self._DATA_OFFSET, **self._INT_FORMAT)  # type: ignore
+        return self._serializer.int.read(
+            *self._DATA_OFFSET,  # pylint: disable=E1133
+            **self._INT_FORMAT,  # type: ignore
+        )
 
     @data_offset.setter
     def data_offset(self, value: int) -> None:
-        self._serializer.int.write(value, *self._DATA_OFFSET, **self._INT_FORMAT)  # type: ignore
+        self._serializer.int.write(
+            value,
+            *self._DATA_OFFSET,  # pylint: disable=E1133
+            **self._INT_FORMAT,  # type: ignore
+        )
 
     @property
     def compressed_size(self) -> int:  # length_in_archive
-        return self._serializer.int.read(*self._COMP_SIZE, **self._INT_FORMAT)  # type: ignore
+        return self._serializer.int.read(
+            *self._COMP_SIZE, **self._INT_FORMAT  # type: ignore# pylint: disable=E1133
+        )
 
     @compressed_size.setter
     def compressed_size(self, value: int) -> None:
-        self._serializer.int.write(value, *self._COMP_SIZE, **self._INT_FORMAT)  # type: ignore
+        self._serializer.int.write(
+            value,
+            *self._COMP_SIZE,  # pylint: disable=E1133
+            **self._INT_FORMAT,  # type: ignore
+        )
 
     @property
     def decompressed_size(self) -> int:  # length_on_disk
-        return self._serializer.int.read(*self._DECOMP_SIZE, **self._INT_FORMAT)  # type: ignore
+        return self._serializer.int.read(
+            *self._DECOMP_SIZE,  # pylint: disable=E1133
+            **self._INT_FORMAT,  # type: ignore
+        )
 
     @decompressed_size.setter
     def decompressed_size(self, value: int) -> None:
-        self._serializer.int.write(value, *self._DECOMP_SIZE, **self._INT_FORMAT)  # type: ignore
+        self._serializer.int.write(
+            value,
+            *self._DECOMP_SIZE,  # pylint: disable=E1133
+            **self._INT_FORMAT,  # type: ignore
+        )
 
     @property
     def storage_type(self) -> StorageType:
         """The Storage Type that determines whether the file is stored as-is, or
         compressed."""
-        value = self._serializer.int.read(*self._FLAGS, **self._INT_FORMAT)  # type: ignore
+        value = self._serializer.int.read(
+            *self._FLAGS, **self._INT_FORMAT  # type: ignore # pylint: disable=E1133
+        )
         value &= self._STORAGE_TYPE_MASK
         value >>= self._STORAGE_TYPE_SHIFT
         return StorageType(value)
@@ -295,10 +324,16 @@ class _SgaTocFileV2(SgaTocFile, BinaryProxySerializer):
     def storage_type(self, value: StorageType) -> None:
         # assuming this IS IN FACT, a flag value, we need to read it to edit it
         flag = value << self._STORAGE_TYPE_SHIFT
-        buffer_value = self._serializer.int.read(*self._FLAGS, **self._INT_FORMAT)  # type: ignore
+        buffer_value = self._serializer.int.read(
+            *self._FLAGS, **self._INT_FORMAT  # type: ignore # pylint: disable=E1133
+        )
         buffer_value &= ~self._STORAGE_TYPE_MASK  # clear storage flag
         buffer_value |= flag  # apply storage flag
-        self._serializer.int.write(buffer_value, *self._FLAGS, **self._INT_FORMAT)  # type: ignore
+        self._serializer.int.write(
+            buffer_value,
+            *self._FLAGS,  # pylint: disable=E1133
+            **self._INT_FORMAT,  # type: ignore
+        )
 
 
 class SgaTocFileV2Dow(_SgaTocFileV2):

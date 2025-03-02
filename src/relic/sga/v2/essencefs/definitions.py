@@ -288,7 +288,7 @@ class PureSgaPath(PurePath):
     @property
     def tail(self) -> str:
         return self._flavour.sep.join(
-            self._tail  # pylint: disable = E1101 # type: ignore
+            self._tail  # type: ignore # pylint: disable = E1101
         )
 
 
