@@ -70,7 +70,7 @@ class RelicSgaPackV2Cli(CliPlugin):
             if not _path:  # If empty, assume we're done
                 return True
 
-            d, f = os.path.split(_path)
+            d, _ = os.path.split(_path)
 
             if os.path.exists(d):
                 return not os.path.isfile(d)
@@ -98,7 +98,7 @@ class RelicSgaPackV2Cli(CliPlugin):
         # Execute Command
         logger.info("SGA Packer")
         logger.info(f"\tReading Manifest `{manifest_path}`")
-        with open(manifest_path, "r") as manifest_handle:
+        with open(manifest_path, "r", encoding=None) as manifest_handle:
             if manifest_is_json:
                 manifest_json: Dict[str, Any] = json.load(manifest_handle)
                 manifest = Arciv.from_parser(manifest_json)
@@ -181,6 +181,5 @@ class RelicSgaRepackV2Cli(CliPlugin):
                     sgafs.save(sga_file)
             else:
                 sgafs.save()
-            logger.info(f"\tDone!")
-
-        return None
+            logger.info("\tDone!")
+        return 0

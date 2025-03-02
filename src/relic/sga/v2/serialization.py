@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import logging
 import os
-import time
-import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -24,6 +22,11 @@ from typing import (
 
 from relic.core.errors import RelicToolError
 from relic.core.lazyio import (
+    BinaryProperty,
+    ConstProperty,
+    #    get_BinaryProxySerializer LogProperty,
+)
+from relic.core.lazyio import (
     BinaryWindow,
     ZLibFileReader,
     tell_end,
@@ -31,11 +34,6 @@ from relic.core.lazyio import (
     ByteConverter,
     CStringConverter,
     IntConverter,
-)
-from relic.core.lazyio import (
-    BinaryProperty,
-    ConstProperty,
-    #    get_BinaryProxySerializer LogProperty,
 )
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.hashtools import md5, Hasher
@@ -65,8 +63,7 @@ def _repr_obj(self: Any, *args: str, name: Optional[str] = None, **kwargs: Any) 
         kwarg_line = f" ({kwarg_line})"  # space at start to avoid if below
     if name is None:
         return f"<{klass_name}{kwarg_line}>"
-    else:
-        return f"<{klass_name} '{name}'{kwarg_line}>"
+    return f"<{klass_name} '{name}'{kwarg_line}>"
 
 
 class RelicUnixTimeSerializer:
@@ -642,7 +639,10 @@ class SgaFileV2(SgaFile):
         self._has_file_data_headers = _expected_data_size <= _data_size
         self._has_safe_file_data_headers = _expected_data_size == _data_size
         logger.debug(
-            f"File `{self._meta.name}` has {'' if self._has_file_data_headers else 'No '} {'Exact ' if self._has_safe_file_data_headers else ''}Headers"
+            "File `{0}` has {1} {2}Headers",
+            self._meta.name,
+            "" if self._has_file_data_headers else "No ",
+            "Exact " if self._has_safe_file_data_headers else "",
         )
 
     def __determine_expected_data_window_size(self) -> int:

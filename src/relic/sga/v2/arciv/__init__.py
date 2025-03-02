@@ -41,7 +41,7 @@ def dump(
     settings: Optional[ArcivWriterSettings] = None,
     encoder: Optional[ArcivEncoder] = None,
 ) -> None:
-    logger.debug(f"Dumping Arciv object `{data}` to `{f}`")
+    logger.debug("Dumping Arciv object `{0}` to `{1}`", data, f)
     _writer = ArcivWriter(settings=settings, encoder=encoder)
     _writer.writef(f, data)
 
@@ -51,7 +51,7 @@ def dumps(
     settings: Optional[ArcivWriterSettings] = None,
     encoder: Optional[ArcivEncoder] = None,
 ) -> str:
-    logger.debug(f"Dumping Arciv object `{data}` to string")
+    logger.debug("Dumping Arciv object `{0}` to string", data)
     with StringIO() as h:
         dump(h, data, settings=settings, encoder=encoder)
         return h.getvalue()

@@ -129,7 +129,7 @@ def build_ns_basic(name: str, is_dir: bool) -> Dict[str, Any]:
 
 
 def build_ns_details(
-    type: ResourceType,
+    r_type: ResourceType,
     size: int,
     *,
     accessed: Optional[Union[float, int]] = None,
@@ -138,7 +138,7 @@ def build_ns_details(
     modified: Optional[Union[float, int]] = None,
 ) -> Dict[str, Any]:
     return {
-        "type": int(type),
+        "type": int(r_type),
         "size": size,
         "accessed": accessed,
         "created": created,
@@ -160,7 +160,7 @@ class SgaPathResolver:
 
     @classmethod
     def build(cls, *path: str, alias: Optional[str] = None) -> str:
-        logger.debug(f"Building path given `{path}` & alias: `{alias}`")
+        logger.debug("Building path given `{0}` & alias: `{1}`", path, alias)
         full_path = cls.join(*path)
         full_path = cls.fix_case(full_path)
         if alias:
@@ -173,7 +173,7 @@ class SgaPathResolver:
 
     @classmethod
     def parse(cls, path: str) -> Tuple[Optional[str], str]:
-        logger.debug(f"Parsing path `{path}` into alias/path tuple")
+        logger.debug("Parsing path `{0}` into alias/path tuple", path)
         if ":" in path:
             alias, path = path.split(":", maxsplit=1)
         else:
@@ -182,18 +182,22 @@ class SgaPathResolver:
 
     @classmethod
     def fix_seperator(cls, path: str) -> str:
-        logger.debug(f"Fixing Seperator in `{path}` (`{cls.INV_SEP}` => `{cls.SEP}`)")
+        logger.debug(
+            "Fixing Seperator in `{0}` (`{1}` => `{2}`)", path, cls.INV_SEP, cls.SEP
+        )
         return path.replace(cls.INV_SEP, cls.SEP)
 
     @classmethod
     def fix_case(cls, path: str) -> str:
-        logger.debug(f"Fix Case in `{path}` (`upper` => `lower`)")
+        logger.debug("Fix Case in `{0}` (`upper` => `lower`)", path)
         return path.lower()
 
     @classmethod
     def split_parts(cls, path: str, include_root: bool = True) -> List[str]:
         logger.debug(
-            f"Separating `{path}` into parts{' (including root)' if include_root else ''}"
+            "Separating `{0}` into parts{1}",
+            path,
+            " (including root)" if include_root else "",
         )
         path = cls.fix_seperator(path)
         path = cls.fix_case(path)
@@ -217,7 +221,9 @@ class SgaPathResolver:
     @classmethod
     def join(cls, *parts: str, add_root: bool = False) -> str:
         logger.debug(
-            f"Joining `{parts}`{' (and adding root `' + cls.ROOT + '`)' if add_root else ''}"
+            "Joining `{0}`{1}",
+            parts,
+            " (and adding root `" + cls.ROOT + "`)" if add_root else "",
         )
         fixed_parts = (cls.fix_seperator(part) for part in parts)
         result = ""
@@ -235,7 +241,7 @@ class SgaPathResolver:
 
     @classmethod
     def split(cls, path: str) -> Tuple[str, str]:
-        logger.debug(f"Splitting `{path}` into head, tail")
+        logger.debug("Splitting `{0}` into head, tail", path)
         parts = cls.split_parts(path)
         if len(parts) > 0:
             return cls.join(*parts[:-1]), parts[-1]
@@ -243,20 +249,19 @@ class SgaPathResolver:
 
     @classmethod
     def strip_root(cls, path: str) -> str:
-        logger.debug(f"Stripping root from `{path}`")
+        logger.debug("Stripping root from `{0}`", path)
         if len(path) > 0 and path[0] == cls.ROOT:
             return path[1:]
-        else:
-            return path
+        return path
 
     @classmethod
     def basename(cls, path: str) -> str:
-        logger.debug(f"Getting basename of `{path}`")
+        logger.debug("Getting basename of `{0}`", path)
         return cls.split(path)[1]
 
     @classmethod
     def dirname(cls, path: str) -> str:
-        logger.debug(f"Getting dirname of `{path}`")
+        logger.debug("Getting dirname of `{0}`", path)
         return cls.split(path)[0]
 
 
@@ -357,7 +362,7 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
         return self._info.storage_type
 
     def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
-        logger.debug(f"Getting Info for `{self.name}` (LazyInfo)")
+        logger.debug("Getting Info for `{0}` (LazyInfo)", self.name)
         if namespaces is None:
             namespaces = []
 
@@ -394,7 +399,7 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
             yield self._data_info.data(decompress=True)
 
     def verify_crc32(self, error: bool) -> bool:
-        logger.debug(f"Verifying CRC32 for `{self.name}` (LazyFile)")
+        logger.debug("Verifying CRC32 for `{0}` (LazyFile)", self.name)
         # Locking should be handled by opening file, no need to lock here
         with self.openbin("r") as stream:
             expected = self._data_info.header.crc32
@@ -420,8 +425,8 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
         return self._data_info.header.modified
 
 
-class SgaFsFileV2Mem(_SgaFsFileV2):
-    def __init__(
+class SgaFsFileV2Mem(_SgaFsFileV2):  # pylint: disable=r0902
+    def __init__(  # pylint: disable=r0917
         self,
         name: str,
         storage_type: Optional[StorageType] = None,
@@ -485,7 +490,7 @@ class SgaFsFileV2Mem(_SgaFsFileV2):
         return RelicDateTimeSerializer.datetime2unix(self._modified)
 
     def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
-        logger.debug(f"Getting Info for `{self.name}` (MemFile)")
+        logger.debug("Getting Info for `{0}` (MemFile)", self.name)
         if namespaces is None:
             namespaces = []
 
@@ -499,7 +504,9 @@ class SgaFsFileV2Mem(_SgaFsFileV2):
         return Info(info)
 
     def setinfo(self, info: Mapping[str, Mapping[str, object]]) -> None:
-        logger.debug(f"Setting (Updating) Info for `{self.name}` (MemFile) to `{info}`")
+        logger.debug(
+            "Setting (Updating) Info for `{0}` (MemFile) to `{1}`", self.name, info
+        )
         if NS_DETAILS in info:
             self._modified = info[NS_DETAILS]["modified"]  # type: ignore
 
@@ -683,6 +690,9 @@ class SgaFsFolderV2Mem(_SgaFsFolderV2):
         self._folders: Dict[str, _SgaFsFolderV2] = {}
         self._files: Dict[str, _SgaFsFileV2] = {}
 
+    def empty(self) -> bool:
+        return len(self._children) == 0
+
     @property
     def name(self) -> str:
         return self._name
@@ -699,12 +709,11 @@ class SgaFsFolderV2Mem(_SgaFsFolderV2):
         if name in self._children:
             if name in self._files:
                 raise fs.errors.FileExists(name)
-            elif name in self._folders:
+            if name in self._folders:
                 raise fs.errors.DirectoryExists(name)
-            else:
-                raise fs.errors.ResourceError(
-                    f"Child '{name}' ({str(resource)}) already exists ({str(alt_lookup[name])})!"
-                )
+            raise fs.errors.ResourceError(
+                f"Child '{name}' ({str(resource)}) already exists ({str(alt_lookup[name])})!"
+            )
         self._children[name] = resource
         alt_lookup[name] = resource
         return resource
@@ -758,7 +767,7 @@ class SgaFsFolderV2Mem(_SgaFsFolderV2):
 
 
 class SgaFsFolderV2Lazy(_SgaFsFolderV2):
-    def __init__(
+    def __init__(  # pylint:disable=r0917
         self,
         info: SgaTocFolder,
         name_window: SgaNameWindow,
@@ -773,6 +782,9 @@ class SgaFsFolderV2Lazy(_SgaFsFolderV2):
         self._all_folders = all_folders
         self._files: Optional[Dict[str, _SgaFsFileV2]] = None
         self._folders: Optional[Dict[str, _SgaFsFolderV2]] = None
+
+    def empty(self) -> bool:
+        return (len(self._all_files) + len(self._all_folders)) == 0
 
     def getinfo(self, namespace: Collection[str]) -> Info:
         return Info({NS_BASIC: build_ns_basic(self.name, True)})
@@ -857,6 +869,9 @@ class SgaFsFolderV2(_SgaFsFolderV2):
         self._is_lazy: bool = lazy is not None
         self._backing: _SgaFsFolderV2 = lazy or mem  # type: ignore # at least one will not be None
 
+    def empty(self) -> bool:
+        return self._backing.empty()
+
     def _unlazy(self) -> None:
         if not self._is_lazy:
             return
@@ -872,16 +887,16 @@ class SgaFsFolderV2(_SgaFsFolderV2):
     def _unlazy_children(self) -> None:
         for file in self._backing.files:
             if hasattr(file, "_unlazy"):
-                file._unlazy()
+                file._unlazy()  # pylint: disable=W0212
         for folder in self._backing.folders:
             if hasattr(folder, "_unlazy"):
-                folder._unlazy()
+                folder._unlazy()  # pylint: disable=W0212
             if hasattr(folder, "_unlazy_children"):
-                folder._unlazy_children()
+                folder._unlazy_children()  # pylint: disable=W0212
 
-    def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
-        namespaces = namespaces or []
-        return self._backing.getinfo(namespaces)
+    def getinfo(self, namespace: Optional[Collection[str]] = None) -> Info:
+        namespace = namespace or []
+        return self._backing.getinfo(namespace)
 
     def setinfo(self, info: Mapping[str, Mapping[str, object]]) -> None:
         self._unlazy()
@@ -910,8 +925,8 @@ class SgaFsFolderV2(_SgaFsFolderV2):
     def scandir(self) -> Iterable[str]:
         return self._backing.scandir()
 
-    def get_child(self, part: str) -> Optional[Union[_SgaFsFileV2, _SgaFsFolderV2]]:
-        return self._backing.get_child(part)
+    def get_child(self, name: str) -> Optional[Union[_SgaFsFileV2, _SgaFsFolderV2]]:
+        return self._backing.get_child(name)
 
     def remove_file(self, name: str) -> None:
         return self._backing.remove_file(name)
@@ -1024,14 +1039,14 @@ class SgaFsDriveV2(_SgaFsDriveV2):
         self._is_lazy = False
         root_folder = self._backing.root
         if hasattr(root_folder, "_unlazy"):
-            root_folder._unlazy()
+            root_folder._unlazy()  # pylint:disable=w0212
         self._backing = SgaFsDriveV2Mem(
             self._backing.name, self._backing.alias, root_folder
         )
 
     def _unlazy_children(self) -> None:
         if hasattr(self.root, "_unlazy_children"):
-            self.root._unlazy_children()
+            self.root._unlazy_children()  # pylint: disable=w0212
 
     @property
     def name(self) -> str:
@@ -1046,9 +1061,9 @@ class SgaFsDriveV2(_SgaFsDriveV2):
         return self._backing.root
 
 
-class _V2TocDisassembler:
+class _V2TocDisassembler:  # pylint:disable=r0902
     @dataclass
-    class TocInfo:
+    class TocInfo:  # pylint:disable=r0902
         drive_count: int
         folder_count: int
         file_count: int
@@ -1073,7 +1088,7 @@ class _V2TocDisassembler:
         self._drive_count = 0
 
     def _write_name_to_table(self, table: Dict[str, int], name: str) -> int:
-        logger.debug(f"Writing `{name}` to name table `{table}`")
+        logger.debug("Writing `{0}` to name table `{1}`", name, table)
         name = SgaPathResolver.fix_seperator(name)
         _, name = SgaPathResolver.parse(name)
         name = SgaPathResolver.strip_root(name)
@@ -1097,17 +1112,16 @@ class _V2TocDisassembler:
         return result
 
     def write_name_in_drive(self, drive: str, name: str = SgaPathResolver.ROOT) -> int:
-        logger.debug(f"Writing `{name}` in drive `{drive}`")
+        logger.debug("Writing `{0}` in drive `{1}`", name, drive)
         name_table = self._get_or_make_name_table(drive)
         return self._write_name_to_table(name_table, name.lower())
 
-    def write_data(
+    def write_data(  # pylint: disable=r0914
         self,
         name: str,
         modified: Union[int, float, datetime],
         uncompressed: bytes,
         storage_type: StorageType,
-        path: Optional[str] = None,
     ) -> Tuple[int, Tuple[int, int]]:
         handle = self.data_block
 
@@ -1149,7 +1163,7 @@ class _V2TocDisassembler:
 
         return result
 
-    def write_drive(
+    def write_drive(  # pylint: disable= r0913, r0917
         self,
         alias: Optional[str] = None,
         name: Optional[str] = None,
@@ -1163,7 +1177,7 @@ class _V2TocDisassembler:
     ) -> None:
         handle = self.drive_block
 
-        window_size = SgaTocDriveV2._SIZE
+        window_size = SgaTocDriveV2._SIZE  # pylint: disable=w0212
         if window_start is None:
             handle.seek(0, os.SEEK_END)
             window_start = handle.tell()
@@ -1189,7 +1203,7 @@ class _V2TocDisassembler:
             if root_folder is not None:
                 toc_drive.root_folder = root_folder
 
-    def write_file(  # pylint:disable = R0917
+    def write_file(  # pylint: disable= R0913, R0917
         self,
         name_offset: Optional[int] = None,
         storage_type: Optional[StorageType] = None,
@@ -1199,15 +1213,15 @@ class _V2TocDisassembler:
         *,
         window_start: Optional[int] = None,
     ) -> int:
-        _TOC_FILE_HANDLERS = {
+        _toc_file_hanlders = {
             SgaV2GameFormat.DawnOfWar: SgaTocFileV2Dow,
             SgaV2GameFormat.ImpossibleCreatures: SgaTocFileV2ImpCreatures,
         }
 
-        _TOC_FILE = _TOC_FILE_HANDLERS[self._game_format]
+        _toc_file_cls = _toc_file_hanlders[self._game_format]
         handle = self.file_block
 
-        window_size = _TOC_FILE._SIZE  # pylint:disable = W0212
+        window_size = _toc_file_cls._SIZE  # pylint:disable = W0212
         if window_start is None:
             handle.seek(0, os.SEEK_END)
             window_start = handle.tell()
@@ -1217,7 +1231,7 @@ class _V2TocDisassembler:
 
         # Write Drive
         with BinaryWindow(handle, window_start, window_size) as window:
-            toc_file: _SgaTocFileV2 = _TOC_FILE(window)
+            toc_file: _SgaTocFileV2 = _toc_file_cls(window)
             if name_offset is not None:
                 toc_file.name_offset = name_offset
             if storage_type is not None:
@@ -1231,7 +1245,7 @@ class _V2TocDisassembler:
 
             return window_start
 
-    def write_folder(  # pylint:disable = R0913
+    def write_folder(  # pylint: disable= R0913, RO917
         self,
         name_offset: Optional[int] = None,
         first_folder: Optional[int] = None,
@@ -1243,7 +1257,7 @@ class _V2TocDisassembler:
     ) -> int:
         handle = self.folder_block
 
-        window_size = SgaTocFolderV2._SIZE
+        window_size = SgaTocFolderV2._SIZE  # pylint:disable=w0212
         if window_start is None:
             handle.seek(0, os.SEEK_END)
             window_start = handle.tell()
@@ -1352,9 +1366,7 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
         # We could write them after writing the file tree;
         # but this wouldn't work with multi-root_folder sgas
 
-        folders = sorted(
-            [sub_folder for sub_folder in folder.folders], key=lambda x: x.name
-        )
+        folders = sorted(list(folder.folders), key=lambda x: x.name)
 
         # files = sorted([sub_file.name for sub_file in folder.files])
 
@@ -1364,14 +1376,14 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
         )
         self.write_name(parent_full_path)
 
-        for folder in folders:
+        for _folder in folders:
             _alias, full_fold_path = SgaPathResolver.parse(
-                SgaPathResolver.join(parent_full_path, folder.name)
+                SgaPathResolver.join(parent_full_path, _folder.name)
             )
             self.write_name(full_fold_path)
 
-        for folder in folders:
-            self.write_fs_tree_names(folder, parent_full_path)
+        for _folder in folders:
+            self.write_fs_tree_names(_folder, parent_full_path)
 
         # for file_path in files:
         #     self.write_name(file_path)
@@ -1554,8 +1566,8 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         for file in sorted(folder.Files, key=lambda x: x.File.lower()):
             self._write_name_in_drive(drive, file.File)
 
-        for folder in folder.Folders:
-            self.write_arciv_file_names(folder, drive)
+        for _folder in folder.Folders:
+            self.write_arciv_file_names(_folder, drive)
 
     def write_arciv_folder_names(
         self, folder: TocFolderItem, drive: TocItem, path: Optional[str] = None
@@ -1610,7 +1622,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             )
         return Info(_INFO)
 
-    def write_arciv_file(
+    def write_arciv_file(  # pylint:disable=r0914
         self,
         file: TocFileItem,
         drive: TocItem,
@@ -1656,15 +1668,13 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
 
         # return index
 
-    def write_arciv_folder(
+    def write_arciv_folder(  # pylint: disable=r0917,r0914
         self,
         folder: TocFolderItem,
         drive: TocItem,
         path: Optional[str] = None,
         write_back: Optional[int] = None,
         fs_info: Optional[Tuple[FS, str]] = None,
-        *,
-        root_folder: bool = False,
     ) -> None:
         name = folder.FolderInfo.folder
         full_path = SgaPathResolver.join(path, name) if path is not None else name
@@ -1709,11 +1719,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         folder_root_wb = self.write_folder()
 
         self.write_arciv_folder(
-            drive.RootFolder,
-            write_back=folder_root_wb,
-            drive=drive,
-            fs_info=fs_info,
-            root_folder=True,
+            drive.RootFolder, write_back=folder_root_wb, drive=drive, fs_info=fs_info
         )
 
         folder_end = self.folder_count
@@ -1759,7 +1765,7 @@ class _SgaV2Serializer:
     def _disassemble_toc(self) -> Iterator[_V2TocDisassembler.TocInfo]:
         raise NotImplementedError
 
-    def write(self) -> None:
+    def write(self) -> None:  # pylint: disable=r0914
         if self.working_handle.tell() != 0:
             raise RelicToolError(
                 "Writing an SGA to the middle of a file! If this is intended behaviour; please write to a BinaryWindow or a BytesIO object"
@@ -1864,7 +1870,7 @@ class _SgaV2Serializer:
         VersionSerializer.write(handle, version)
 
     @classmethod
-    def write_meta_block(
+    def write_meta_block(  # pylint: disable=r0913,r0917
         cls,
         handle: BinaryIO,
         file_md5: Optional[bytes] = None,
@@ -1896,7 +1902,7 @@ class _SgaV2Serializer:
         return window_start
 
     @classmethod
-    def write_toc_header(
+    def write_toc_header(  # pylint: disable=r0914,r0917,r0913
         cls,
         handle: BinaryIO,
         drive_pos: Optional[int] = None,
@@ -1942,7 +1948,7 @@ class _SgaV2Serializer:
         return window_start
 
     @classmethod
-    def write_toc(
+    def write_toc(  # pylint: disable=r0917
         cls,
         handle: BinaryIO,
         drive_block: BinaryIO,
@@ -1973,7 +1979,7 @@ class _SgaV2Serializer:
 
 
 class SgaFsV2Serializer(_SgaV2Serializer):
-    def __init__(
+    def __init__(  # pylint: disable=r0917
         self,
         sga: EssenceFSV2,
         handle: BinaryIO,
@@ -2000,7 +2006,7 @@ class SgaFsV2Serializer(_SgaV2Serializer):
 
 
 class ArcivV2Serializer(_SgaV2Serializer):
-    def __init__(
+    def __init__(  # pylint: disable=R0902, R0913, R0917
         self,
         arciv: Arciv,
         handle: BinaryIO,
@@ -2018,13 +2024,10 @@ class ArcivV2Serializer(_SgaV2Serializer):
 
     @contextmanager
     def _disassemble_toc(self) -> Iterator[_V2TocDisassembler.TocInfo]:
-        try:
-            if self.filesystem is not None:
-                sys_path = self.filesystem.getsyspath("/")
-            else:
-                sys_path = None
-        except Exception:
-            raise
+        if self.filesystem is not None:
+            sys_path = self.filesystem.getsyspath("/")
+        else:
+            sys_path = None
 
         with ArcivV2TocDisassembler(
             self.filesystem,
@@ -2099,7 +2102,9 @@ class SgaFsV2Assembler:
             yield from cls.assemble_folder_tree(header, sub_folder, full_path)
 
     @classmethod
-    def assemble(cls, manifest: Arciv) -> Tuple[EssenceFSV2, Iterable[str]]:
+    def assemble(
+        cls, manifest: Arciv
+    ) -> Tuple[EssenceFSV2, Iterable[str]]:  # pylint: disable=r0914
         sga = EssenceFSV2(
             game=SgaV2GameFormat.DawnOfWar, name=manifest.ArchiveHeader.ArchiveName
         )  # TODO does IC support modding?
@@ -2188,7 +2193,7 @@ class EssenceSubFsV2(SubFS[EssenceFS]):
         return self._wrap_fs, aliased_path
 
 
-class EssenceFSV2(EssenceFS):
+class EssenceFSV2(EssenceFS):  # pylint: disable=r0902
     subfs_class = EssenceSubFsV2  # type: ignore
 
     @classmethod
@@ -2226,7 +2231,7 @@ class EssenceFSV2(EssenceFS):
         )  # handle is binary, tell mypy via casting
         return cls(binary_handle, parse_handle=True, game=None, in_memory=False)
 
-    def __init__(
+    def __init__(  # pylint:disable=r0913
         self,
         stream: Optional[BinaryIO] = None,
         parse_handle: bool = False,

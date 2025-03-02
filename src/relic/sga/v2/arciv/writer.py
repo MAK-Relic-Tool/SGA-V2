@@ -93,7 +93,10 @@ class ArcivWriter:
         self, value: str, *, in_collection: bool = False, in_assignment: bool = False
     ) -> Iterable[str]:
         logger.debug(
-            f"Formatting String `{value}` (in_collection:{in_collection}, in_assignment:{in_assignment})"
+            "Formatting String `{0}` (in_collection:{1}, in_assignment:{2})",
+            value,
+            in_collection,
+            in_assignment,
         )
         yield from self._formatted(
             f'"{value}"',
@@ -110,7 +113,10 @@ class ArcivWriter:
         in_assignment: bool = False,
     ) -> Iterable[str]:
         logger.debug(
-            f"Formatting Number `{value}` (in_collection:{in_collection}, in_assignment:{in_assignment})"
+            "Formatting Number `{0}` (in_collection:{1}, in_assignment:{2})",
+            value,
+            in_collection,
+            in_assignment,
         )
         yield from self._formatted(
             str(value),
@@ -127,7 +133,10 @@ class ArcivWriter:
         in_assignment: bool = False,
     ) -> Iterable[str]:
         logger.debug(
-            f"Formatting Path `{value}` (in_collection:{in_collection}, in_assignment:{in_assignment})"
+            "Formatting Path `{0}` (in_collection:{1}, in_assignment:{2})",
+            value,
+            in_collection,
+            in_assignment,
         )
         yield from self._formatted(
             f"[[{value if not hasattr(value, '__fspath__') else value.__fspath__()}]]",
@@ -144,7 +153,10 @@ class ArcivWriter:
         in_assignment: bool = False,
     ) -> Iterable[str]:
         logger.debug(
-            f"Formatting Collection `{encoded}` (in_collection:{in_collection}, in_assignment:{in_assignment})"
+            "Formatting Collection `{0}` (in_collection:{1}, in_assignment:{2})",
+            encoded,
+            in_collection,
+            in_assignment,
         )
         if in_assignment:
             yield from self._formatted(newline=True)
@@ -180,7 +192,11 @@ class ArcivWriter:
         encode: bool = True,
     ) -> Iterable[str]:
         logger.debug(
-            f"Formatting Item `{value}` (in_collection:{in_collection}, in_assignment:{in_assignment}, encode:{encode})"
+            "Formatting Item `{0}` (in_collection:{1}, in_assignment:{2}, encode:{3})",
+            value,
+            in_collection,
+            in_assignment,
+            encode,
         )
         encoded = self._encoder.default(value) if encode else value
         if isinstance(encoded, (list, dict)):
@@ -208,7 +224,10 @@ class ArcivWriter:
         self, key: str, value: Any, *, in_collection: bool = False
     ) -> Iterable[str]:
         logger.debug(
-            f"Formatting Key/Value `{key}`/`{value}` (in_collection:{in_collection})"
+            "Formatting Key/Value `{0}`/`{1}` (in_collection:{2})",
+            key,
+            value,
+            in_collection,
         )
         yield from self._formatted(key, "=")
         if self._settings.has_whitespace:
@@ -218,7 +237,7 @@ class ArcivWriter:
         )
 
     def tokens(self, data: Any) -> Iterable[str]:
-        logger.debug(f"Iterating Tokens on {data}")
+        logger.debug("Iterating Tokens on {0}", data)
         encoded = self._encoder.default(data)
         if not isinstance(encoded, dict):
             raise RelicToolError(
