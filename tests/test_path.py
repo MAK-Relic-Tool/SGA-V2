@@ -1,7 +1,8 @@
 from typing import Optional, List
 
 import pytest
-from relic.sga.v2.essencefs.definitions import SgaPathResolver, PureSgaPath
+from relic.sga.v2.essencefs.definitions import SgaPathResolver
+from relic.sga.v2.essencefs.pathing import PureSgaPath
 
 _parts = (
     ["test"],
