@@ -25,7 +25,7 @@ class RelicSgaV2Cli(CliPluginGroup):
 
 class RelicSgaPackV2Cli(CliPlugin):
     def _create_parser(
-            self, command_group: Optional[_SubParsersAction] = None
+        self, command_group: Optional[_SubParsersAction] = None
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
@@ -37,14 +37,14 @@ class RelicSgaPackV2Cli(CliPlugin):
             "manifest",
             type=_get_file_type_validator(exists=True),
             help="An .arciv file (or a suitable .json matching the .arciv tree)."
-                 " If the file extension is not '.json' or '.arciv', '.arciv' is assumed",
+            " If the file extension is not '.json' or '.arciv', '.arciv' is assumed",
         )
         parser.add_argument(
             "out_path",
             type=str,
             help="The path to the output SGA file."
-                 " If the path is a directory, the SGA will be placed in the directory using the name specified in the manifest."
-                 " If not specified, defaults to the manifest's directory.",
+            " If the path is a directory, the SGA will be placed in the directory using the name specified in the manifest."
+            " If not specified, defaults to the manifest's directory.",
             # required=False,
             nargs="?",
             default=None,
@@ -68,7 +68,7 @@ class RelicSgaPackV2Cli(CliPlugin):
             if os.path.exists(d):
                 return not os.path.isfile(d)
             if (
-                    _path == d
+                _path == d
             ):  # If, somehow, we try to recurse into ourselves, assume we're done
                 return True
             return _check_parts(d)
@@ -117,7 +117,7 @@ class RelicSgaPackV2Cli(CliPlugin):
 
 class RelicSgaRepackV2Cli(CliPlugin):
     def _create_parser(
-            self, command_group: Optional[_SubParsersAction] = None
+        self, command_group: Optional[_SubParsersAction] = None
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
@@ -126,9 +126,7 @@ class RelicSgaRepackV2Cli(CliPlugin):
             parser = command_group.add_parser("repack")
 
         parser.add_argument(
-            "in_sga",
-            type=_get_file_type_validator(exists=True),
-            help="Input SGA File"
+            "in_sga", type=_get_file_type_validator(exists=True), help="Input SGA File"
         )
         parser.add_argument(
             "out_sga",

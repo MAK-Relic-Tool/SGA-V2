@@ -17,6 +17,7 @@ from typing import (
     Dict,
     TypeVar,
     Protocol,
+    Generic,
 )
 
 from relic.core.errors import RelicToolError
@@ -29,10 +30,10 @@ from relic.core.lazyio import (
     CStringConverter,
     IntConverter,
 )
-from relic.core.properties import (
+from relic.core.lazyio import (
     BinaryProperty,
     ConstProperty,
-    get_BinaryProxySerializer_accessor, LogProperty,
+    #    get_BinaryProxySerializer LogProperty,
 )
 from relic.sga.core.definitions import StorageType
 from relic.sga.core.hashtools import md5, Hasher
@@ -49,7 +50,6 @@ from relic.sga.core.serialization import (
 )
 
 logger = logging.getLogger(__name__)
-
 
 
 def _repr_name(t: Any) -> str:
@@ -113,8 +113,32 @@ def _next(offset: int, size: int) -> int:
 _FILE_MD5_EIGEN = b"E01519D6-2DB7-4640-AF54-0A23319C56C3"
 _TOC_MD5_EIGEN = b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF"
 
+_T = TypeVar("_T")
 
-_accessor = get_BinaryProxySerializer_accessor()
+
+class LogProperty(Generic[_T]):
+    def __init__(
+        self,
+        property: BinaryProperty[_T] | ConstProperty[_T],
+        name: str,
+        logger: logging.Logger,
+    ):
+        self._property = property
+
+    def __get__(self, instance: Any, owner: Any) -> _T:
+        return self._property.__get__(instance, owner)
+
+    def __set__(self, instance: Any, value: _T) -> None:
+        return self._property.__set__(instance, value)
+
+    @property
+    def __doc__(self) -> Optional[str]:
+        return self._property.__doc__
+
+    @__doc__.setter
+    def __doc__(self, value: Optional[str]) -> None:
+        self._property.__doc__ = value
+
 
 class SgaHeaderV2(SgaHeader):
     class Meta:
@@ -131,15 +155,15 @@ class SgaHeaderV2(SgaHeader):
         uint32le_converter = IntConverter(4, "little", signed=False)
 
     file_md5: bytes = LogProperty(  # type: ignore
-        BinaryProperty(_accessor,Meta.file_md5_ptr, converter=ByteConverter), "file_md5", logger
+        BinaryProperty(*Meta.file_md5_ptr, converter=ByteConverter), "file_md5", logger
     )
 
     name: str = LogProperty(  # type: ignore
-        BinaryProperty(_accessor,Meta.name_ptr, converter=Meta.name_converter), "name", logger
+        BinaryProperty(*Meta.name_ptr, converter=Meta.name_converter), "name", logger
     )
 
     toc_md5: bytes = LogProperty(
-        BinaryProperty(_accessor,Meta.toc_md5_ptr, converter=ByteConverter), "toc_md5", logger
+        BinaryProperty(*Meta.toc_md5_ptr, converter=ByteConverter), "toc_md5", logger
     )  # type: ignore
 
     # Todo raise an explicit not writable error
@@ -149,12 +173,12 @@ class SgaHeaderV2(SgaHeader):
         logger,
     )
     toc_size: int = LogProperty(  # type: ignore
-        BinaryProperty(_accessor, Meta.toc_size_ptr, converter=Meta.uint32le_converter),
+        BinaryProperty(*Meta.toc_size_ptr, converter=Meta.uint32le_converter),
         "toc_size",
         logger,
     )
     data_pos: int = LogProperty(  # type: ignore
-        BinaryProperty(_accessor, Meta.data_pos_ptr, converter=Meta.uint32le_converter),
+        BinaryProperty(*Meta.data_pos_ptr, converter=Meta.uint32le_converter),
         "data_pos",
         logger,
     )
@@ -284,9 +308,6 @@ class SgaTocFileV2Dow(_SgaTocFileV2):
     _SIZE = _next(*_DECOMP_SIZE)
 
 
-_T = TypeVar("_T")
-
-
 # UGH; these names :yikes:
 class SgaTocFileDataHeaderV2DowProtocol(Protocol):
     name: str
@@ -301,13 +322,16 @@ class MemSgaTocFileDataHeaderV2Dow(SgaTocFileDataHeaderV2DowProtocol):
     modified: int
 
     @classmethod
-    def create(cls, name: str, data: bytes, time: Optional[int] = None):
+    def create(
+        cls, name: str, data: bytes, time: Optional[int] = None
+    ) -> MemSgaTocFileDataHeaderV2Dow:
         from relic.sga.core import hashtools
 
         crc32 = hashtools.crc32.hash(data)
+
         if time is None:
             now = datetime.now()
-            time = RelicDateTimeSerializer.datetime2unix(now)
+            time = int(RelicDateTimeSerializer.datetime2unix(now))
         return MemSgaTocFileDataHeaderV2Dow(name, crc32, time)
 
 
@@ -325,12 +349,12 @@ class LazySgaTocFileDataHeaderV2Dow(
         )
         uint32le_converter = IntConverter(length=4, byteorder="little", signed=False)
 
-    name: str = LogProperty(
+    name: str = LogProperty(  # type: ignore
         BinaryProperty(*Meta.name_ptr, converter=Meta.name_cstring_converter),
         "name",
         logger,
     )
-    crc32: int = LogProperty(
+    crc32: int = LogProperty(  # type: ignore
         BinaryProperty(*Meta.crc_ptr, converter=Meta.uint32le_converter),
         "crc32",
         logger,
@@ -352,7 +376,7 @@ class LazySgaTocFileDataHeaderV2Dow(
         _ = self._serializer.write_bytes(buffer, *self.Meta.modified_ptr)
 
     def header_is_valid(self) -> bool:
-        def _warn(name: str):
+        def _warn(name: str) -> None:
             logger.warning(
                 f"Failed to parse File Data Header `{name}`, the header may be missing or invalid."
             )
@@ -391,7 +415,7 @@ Please submit a bug report if one has not already been submitted.""",
             return MemSgaTocFileDataHeaderV2Dow.create(name, data, modified)
 
 
-class SgaTocFileDataV2Dow:
+class SgaTocFileDataV2:
     def __init__(
         self,
         toc_file: SgaTocFile,
@@ -409,6 +433,7 @@ class SgaTocFileDataV2Dow:
         _data_header_window = BinaryWindow(self._data_window, offset, size)
         _lazy_data_header = LazySgaTocFileDataHeaderV2Dow(_data_header_window)
 
+        self._data_header: SgaTocFileDataHeaderV2DowProtocol
         # We can safely use our properties here EXCEPT FOR DATA_HEADER PROPS
         if has_safe_data_header or (
             has_data_header and _lazy_data_header.header_is_valid()
@@ -416,14 +441,12 @@ class SgaTocFileDataV2Dow:
             logger.debug(
                 f"File `{self.name}` {'has' if has_safe_data_header else 'may have'} a Data Header"
             )
-            self._data_header: SgaTocFileDataHeaderV2DowProtocol = _lazy_data_header
+            self._data_header = _lazy_data_header
         else:
             logger.debug(f"File `{self.name}` is missing its Data Header")
             _name = self.name
             _data = self.data(True).read(-1)
-            self._data_header: SgaTocFileDataHeaderV2DowProtocol = (
-                MemSgaTocFileDataHeaderV2Dow.create(_name, _data)
-            )
+            self._data_header = MemSgaTocFileDataHeaderV2Dow.create(_name, _data)
 
     @property
     def name(self) -> str:
@@ -465,7 +488,7 @@ GAME_FORMAT_TOC_FILE = {
     SgaV2GameFormat.ImpossibleCreatures: SgaTocFileV2ImpCreatures,
 }
 GAME_FORMAT_TOC_FILE_DATA = {
-    SgaV2GameFormat.DawnOfWar: SgaTocFileDataV2Dow,
+    SgaV2GameFormat.DawnOfWar: SgaTocFileDataV2,
     SgaV2GameFormat.ImpossibleCreatures: None,
 }
 
@@ -484,8 +507,8 @@ class SgaTocV2(SgaToc):
 
         smallest = toc_end
         ptrs = [
+            header.drive.offset,
             header.folder.offset,
-            header.root_folder.offset,
             header.file.offset,
             header.name.offset,
         ]
@@ -547,7 +570,7 @@ class SgaTocV2(SgaToc):
 
         toc_class = GAME_FORMAT_TOC_FILE.get(self._game_format)
         toc_offset, toc_count = self._header.file.info
-        self._files = SgaTocInfoArea(parent, toc_offset, toc_count, cls=toc_class)
+        self._files = SgaTocInfoArea(parent, toc_offset, toc_count, cls=toc_class)  # type: ignore
         self._names = SgaNameWindow(parent, *self._header.name.info)
 
     @property
@@ -602,9 +625,8 @@ class SgaFileV2(SgaFile):
             len(self._toc.files) * LazySgaTocFileDataHeaderV2Dow.Meta.SIZE
         )
         total_data_size = 0
-        for file in self._toc.files:
-            file: SgaTocFile
-            total_data_size += file.compressed_size
+        for __toc_file in self._toc.files:
+            total_data_size += __toc_file.compressed_size
         return total_header_size + total_data_size
 
     def __verify(

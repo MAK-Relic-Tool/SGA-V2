@@ -68,13 +68,15 @@ class EssenceFSV2Opener(EssenceFsOpenerPlugin[EssenceFSV2]):
                 pass  # Do nothing; create the blank file
 
         fmode = "w+b" if writeable else "rb"
+        handle: BinaryIO = None  # type: ignore
         try:
             handle: BinaryIO = open(parse_result.resource, fmode)  # type: ignore
             return EssenceFSV2(
                 handle, parse_handle=exists, game=game_format, editable=writeable
             )
         except:
-            handle.close()
+            if handle is not None:
+                handle.close()
             raise
 
 

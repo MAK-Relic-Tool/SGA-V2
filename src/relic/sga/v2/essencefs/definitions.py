@@ -32,6 +32,8 @@ from typing import (
     cast,
     TypeVar,
     IO,
+    Literal,
+    Generator,
 )
 
 import fs.errors
@@ -63,7 +65,7 @@ from relic.sga.v2.arciv.definitions import (
 )
 from relic.sga.v2.definitions import version
 from relic.sga.v2.serialization import (
-    SgaTocFileDataV2Dow,
+    SgaTocFileDataV2,
     SgaTocFileV2Dow,
     RelicDateTimeSerializer,
     SgaFileV2,
@@ -85,19 +87,58 @@ NS_BASIC = "basic"
 NS_DETAILS = "details"
 NS_ESSENCE = "essence"
 
+MODE = Union[
+    Literal[
+        "r+",
+        "+r",
+        "rt+",
+        "r+t",
+        "+rt",
+        "tr+",
+        "t+r",
+        "+tr",
+        "w+",
+        "+w",
+        "wt+",
+        "w+t",
+        "+wt",
+        "tw+",
+        "t+w",
+        "+tw",
+        "a+",
+        "+a",
+        "at+",
+        "a+t",
+        "+at",
+        "ta+",
+        "t+a",
+        "+ta",
+        "x+",
+        "+x",
+        "xt+",
+        "x+t",
+        "+xt",
+        "tx+",
+        "t+x",
+        "+tx",
+    ],
+    Literal["w", "wt", "tw", "a", "at", "ta", "x", "xt", "tx"],
+    Literal["r", "rt", "tr", "U", "rU", "Ur", "rtU", "rUt", "Urt", "trU", "tUr", "Utr"],
+]
+
 
 def build_ns_basic(name: str, is_dir: bool) -> Dict[str, Any]:
     return {"name": name, "is_dir": is_dir}
 
 
 def build_ns_details(
-        type: ResourceType,
-        size: int,
-        *,
-        accessed: Optional[Union[float, int]] = None,
-        created: Optional[Union[float, int]] = None,
-        metadata_changed: Optional[Union[float, int]] = None,
-        modified: Optional[Union[float, int]] = None,
+    type: ResourceType,
+    size: int,
+    *,
+    accessed: Optional[Union[float, int]] = None,
+    created: Optional[Union[float, int]] = None,
+    metadata_changed: Optional[Union[float, int]] = None,
+    modified: Optional[Union[float, int]] = None,
 ) -> Dict[str, Any]:
     return {
         "type": int(type),
@@ -109,6 +150,37 @@ def build_ns_details(
     }
 
 
+@dataclass(frozen=True)
+class _DirEntry:
+    _path: BoundPath
+
+    @property
+    def name(self) -> str:
+        return self._path.name
+
+    @property
+    def path(self) -> str:
+        return str(self._path)
+
+    def inode(self) -> None:
+        raise NotImplementedError
+
+    def is_dir(self, follow_symlinks: bool = True) -> bool:
+        raise NotImplementedError
+
+    def is_file(self, follow_symlinks: bool = True) -> bool:
+        raise NotImplementedError
+
+    def is_symlink(self) -> bool:
+        raise NotImplementedError
+
+    def is_junction(self) -> bool:
+        raise NotImplementedError
+
+    def stat(self, *, follow_symlinks: bool = True) -> object:
+        raise NotImplementedError
+
+
 class SgaFlavour:  # class instead of module
     sep = "\\"
     altsep = "/"
@@ -117,7 +189,7 @@ class SgaFlavour:  # class instead of module
     join = ntpath.join
 
     @classmethod
-    def splitdrive(cls, path: str):
+    def splitdrive(cls, path: str) -> Tuple[str, str]:
         parts = path.split(":", 1)
         if len(parts) == 1:
             drive = ""
@@ -128,7 +200,7 @@ class SgaFlavour:  # class instead of module
         return drive, tail
 
     @classmethod
-    def splitroot(cls, path: str):
+    def splitroot(cls, path: str) -> Tuple[str, str, str]:
         drive, tail = cls.splitdrive(path)
         parts = tail.split(cls.sep, 1)
         if len(parts[0]) == 0:
@@ -141,108 +213,85 @@ class SgaFlavour:  # class instead of module
 
 
 class PureSgaPath(PurePath):
-    """PurePath subclass for SGA Archives (V2).
+    """PurePath subclass for SGA Archives (V2)."""
 
-    """
     _flavour = SgaFlavour
     __slots__ = ()
 
-    def __init__(self, *args):
+    def __init__(self, *args: str):
         super().__init__(*args)
+        self._raw_paths: Iterable[str]
         self._raw_paths = [_.lower() for _ in self._raw_paths]
 
     @classmethod
     def Aliased(cls, *path: str, alias: str | None = None) -> PureSgaPath:
-        if alias is not None and isinstance(alias, str) and len(alias) > 0 and alias[-1] is not ":":
+        if (
+            alias is not None
+            and isinstance(alias, str)
+            and len(alias) > 0
+            and alias[-1] is not ":"
+        ):
             alias = f"{alias}:"
         return PureSgaPath(alias, *path) if alias is not None else PureSgaPath(*path)
 
     @classmethod
-    def _parse_path(cls, path):
+    def _parse_path(cls, path: Optional[str]) -> Tuple[str, str, List[str]]:
         # We have to copy this
         # Because it uses class variables
         # and it's somehow using the nt flavour
         # I'm sure if i looked harder it'd be obv why
         # But this is a fast hack that fixes the issue
         if not path:
-            return '', '', []
+            return "", "", []
         sep = cls._flavour.sep
         altsep = cls._flavour.altsep
         if altsep:
             path = path.replace(altsep, sep)
         drv, root, rel = cls._flavour.splitroot(path)
-        parsed = [sys.intern(str(x)) for x in rel.split(sep) if x and x != '.']
+        parsed = [sys.intern(str(x)) for x in rel.split(sep) if x and x != "."]
         return drv, root, parsed
 
     @property
-    def tail(self):
-        return self._flavour.sep.join(self._tail)
+    def tail(self) -> str:
+        return self._flavour.sep.join(self._tail)  # type: ignore
 
 
 class BoundPath(pathlib.Path):
-    def __init__(self, *args, bind: FS):
+    def __init__(self, *args: Union[str, PathLike[str]], bind: FS):
         super().__init__(*args)
         self._boundfs = bind
 
-    def stat(self, *, follow_symlinks=True):
+    def stat(self, *, follow_symlinks: bool = True) -> os.stat_result:
         ns = "stat" if follow_symlinks else "lstat"
         info = self._boundfs.getinfo(str(self), [ns])
         raise NotImplementedError
 
-    def open(self, mode="rb", buffering=-1, encoding=None, errors=None, newline=None):
+    def open(self, mode: str = "rb", buffering: int = -1, encoding: Optional[str] = None, errors: Optional[str] = None, newline: str = ""):  # type: ignore
         return self._boundfs.open(str(self), mode, buffering, encoding, errors, newline)
 
-    def iterdir(self):
+    def iterdir(self) -> Generator[BoundPath, None, None]:
         for name in self._boundfs.listdir(str(self)):
-            yield self._make_child_relpath(name)
+            yield self._make_child_relpath(name)  # type: ignore
 
-    def _scandir(self):
-        @dataclass(frozen=True)
-        class _DirEntry:
-            _path:BoundPath
-            @property
-            def name(self):
-                return self._path.name
-
-            @property
-            def path(self):
-                return str(self._path)
-
-            def inode(self):
-                raise NotImplementedError
-
-            def is_dir(self,follow_symlinks=True):
-                raise NotImplementedError
-            def is_file(self,follow_symlinks=True):
-                raise NotImplementedError
-
-            def is_symlink(self):
-                raise NotImplementedError
-
-            def is_junction(self):
-                raise NotImplementedError
-
-            def stat(self,*,follow_symlinks=True):
-                raise NotImplementedError
+    def _scandir(self) -> Iterable[_DirEntry]:
 
         for name in self._boundfs.listdir(str(self)):
-            yield _DirEntry(
-                self._make_child_relpath(name)
-            )
+            yield _DirEntry(self._make_child_relpath(name))  # type: ignore
 
-
-    def owner(self):
+    def owner(self) -> None:
         raise NotImplementedError
 
-    def group(self):
+    def group(self) -> None:
         raise NotImplementedError
 
-    def touch(self, mode=0o666, exist_ok=True):
+    def touch(self, mode: int = 0o666, exist_ok: bool = True) -> None:
         raise NotImplementedError
 
-    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+    def mkdir(
+        self, mode: int = 0o777, parents: bool = False, exist_ok: bool = False
+    ) -> None:
         try:
-            self._boundfs.makedir(self(str), Permissions(mode=mode), exist_ok)
+            self._boundfs.makedir(str(self), Permissions(mode=mode), exist_ok)
         except fs.errors.ResourceNotFound:
             if not parents or self.parent == self:
                 raise
@@ -252,34 +301,40 @@ class BoundPath(pathlib.Path):
             if not exist_ok or not self.is_dir():
                 raise
 
-    def chmod(self, mode, *, follow_symlinks=True):
+    def chmod(self, mode: int, *, follow_symlinks: bool = True) -> None:
         raise NotImplementedError
 
-    def unlink(self, missing_ok=False):
+    def unlink(self, missing_ok: bool = False) -> None:
         try:
             self._boundfs.remove(str(self))
         except fs.errors.ResourceNotFound:
             if not missing_ok:
                 raise
 
-    def rmdir(self):
+    def rmdir(self) -> None:
         self._boundfs.removedir(str(self))
 
-    def rename(self, target):
-        self._boundfs.move(str(self), target, False)
+    def rename(self, target: Union[str, PathLike[str]]) -> BoundPath:
+        self._boundfs.move(str(self), str(target), False)
         return self.with_segments(target)
 
-    def replace(self, target):
-        self._boundfs.move(str(self), target, True)
+    def replace(self, target: Union[str, PathLike[str]]) -> BoundPath:
+        self._boundfs.move(str(self), str(target), True)
         return self.with_segments(target)
 
-    def symlink_to(self, target, target_is_directory=False):
+    def symlink_to(
+        self,
+        target: Union[str, bytes, PathLike[bytes], PathLike[str]],
+        target_is_directory: bool = False,
+    ) -> None:
         raise NotImplementedError
 
-    def hardlink_to(self, target):
+    def hardlink_to(
+        self, target: Union[str, bytes, PathLike[bytes], PathLike[str]]
+    ) -> None:
         raise NotImplementedError
 
-    def with_segments(self, *pathsegments):
+    def with_segments(self, *pathsegments: Union[str, PathLike[str]]) -> BoundPath:
         return type(self)(*pathsegments, bind=self._boundfs)
 
 
@@ -462,7 +517,11 @@ class _SgaFsFileV2:
 
 
 class SgaFsFileV2Lazy(_SgaFsFileV2):
-    def __init__(self, info: SgaTocFileV2Dow, data: SgaTocFileDataV2Dow):
+    def __init__(
+        self,
+        info: Union[SgaTocFileV2Dow, SgaTocFileV2ImpCreatures],
+        data: SgaTocFileDataV2,
+    ):
         # TODO
         #   we should probably accept a lock argument instead
         #   this will only protect this file from being read/written simultaneously
@@ -515,8 +574,8 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
             "Cannot write to a lazy file! Did the folder not convert this to a mem-file?"
         )
 
-    @contextmanager  # type: ignore
-    def openbin(self, mode: str) -> Iterator[BinaryIO]:
+    @contextmanager
+    def openbin(self, mode: str) -> Generator[BinaryIO, None, None]:  # type: ignore
         _mode = Mode(mode)
         if _mode.writing:
             raise RelicToolError(
@@ -555,12 +614,12 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
 
 class SgaFsFileV2Mem(_SgaFsFileV2):
     def __init__(
-            self,
-            name: str,
-            storage_type: Optional[StorageType] = None,
-            data: Optional[Union[bytes, BinaryIO]] = None,
-            modified: Optional[datetime] = None,
-            crc: Optional[int] = None,
+        self,
+        name: str,
+        storage_type: Optional[StorageType] = None,
+        data: Optional[Union[bytes, BinaryIO]] = None,
+        modified: Optional[datetime] = None,
+        crc: Optional[int] = None,
     ):
         self._lock = RLock()
 
@@ -642,7 +701,7 @@ class SgaFsFileV2Mem(_SgaFsFileV2):
                 "storage_type", self._storage_type
             )
 
-    @contextmanager  # type: ignore
+    @contextmanager
     def openbin(self, mode: str) -> BinaryIO:  # type: ignore
         _mode = Mode(mode)
         # TODO, Wrapper for 'mode' protections
@@ -673,9 +732,9 @@ class SgaFsFileV2Mem(_SgaFsFileV2):
 
 class SgaFsFileV2(_SgaFsFileV2):
     def __init__(
-            self,
-            lazy: Optional[SgaFsFileV2Lazy] = None,
-            mem: Optional[SgaFsFileV2Mem] = None,
+        self,
+        lazy: Optional[SgaFsFileV2Lazy] = None,
+        mem: Optional[SgaFsFileV2Mem] = None,
     ):
         if lazy is not None and mem is not None:
             raise RelicToolError(
@@ -827,7 +886,7 @@ class SgaFsFolderV2Mem(_SgaFsFolderV2):
         raise RelicToolError("SGA Folder's have no settable information!")
 
     def _add_child(
-            self, name: str, resource: _TChild, alt_lookup: Dict[str, Any]
+        self, name: str, resource: _TChild, alt_lookup: Dict[str, Any]
     ) -> _TChild:
         if name in self._children:
             if name in self._files:
@@ -892,12 +951,12 @@ class SgaFsFolderV2Mem(_SgaFsFolderV2):
 
 class SgaFsFolderV2Lazy(_SgaFsFolderV2):
     def __init__(
-            self,
-            info: SgaTocFolder,
-            name_window: SgaNameWindow,
-            data_window: BinaryWindow,
-            all_files: List[SgaFsFileV2],
-            all_folders: List[SgaFsFolderV2],
+        self,
+        info: SgaTocFolder,
+        name_window: SgaNameWindow,
+        data_window: BinaryWindow,
+        all_files: List[SgaFsFileV2],
+        all_folders: List[SgaFsFolderV2],
     ):
         self._info = info
         self._name_window = name_window
@@ -942,7 +1001,7 @@ class SgaFsFolderV2Lazy(_SgaFsFolderV2):
     def _files_lookup(self) -> Dict[str, _SgaFsFileV2]:
         if self._files is None:
             info = self._info
-            sub_files = self._all_files[info.first_file: info.last_file]
+            sub_files = self._all_files[info.first_file : info.last_file]
             self._files = {f.name: f for f in sub_files}
         return self._files
 
@@ -950,7 +1009,7 @@ class SgaFsFolderV2Lazy(_SgaFsFolderV2):
     def _folder_lookup(self) -> Dict[str, _SgaFsFolderV2]:
         if self._folders is None:
             info = self._info
-            sub_folders = self._all_folders[info.first_folder: info.last_folder]
+            sub_folders = self._all_folders[info.first_folder : info.last_folder]
             self._folders = {f.name: f for f in sub_folders}
         return self._folders
 
@@ -974,9 +1033,9 @@ class SgaFsFolderV2Lazy(_SgaFsFolderV2):
 
 class SgaFsFolderV2(_SgaFsFolderV2):
     def __init__(
-            self,
-            lazy: Optional[SgaFsFolderV2Lazy] = None,
-            mem: Optional[SgaFsFolderV2Mem] = None,
+        self,
+        lazy: Optional[SgaFsFolderV2Lazy] = None,
+        mem: Optional[SgaFsFolderV2Mem] = None,
     ):
         if lazy is not None and mem is not None:
             raise RelicToolError(
@@ -1091,9 +1150,9 @@ class _SgaFsDriveV2:
 
 class SgaFsDriveV2Lazy(_SgaFsDriveV2):
     def __init__(
-            self,
-            info: SgaTocDrive,
-            all_folders: List[SgaFsFolderV2],
+        self,
+        info: SgaTocDrive,
+        all_folders: List[SgaFsFolderV2],
     ):
         self._info = info
         self._all_folders = all_folders
@@ -1135,9 +1194,9 @@ class SgaFsDriveV2Mem(_SgaFsDriveV2):
 
 class SgaFsDriveV2(_SgaFsDriveV2):
     def __init__(
-            self,
-            lazy: Optional[SgaFsDriveV2Lazy] = None,
-            mem: Optional[SgaFsDriveV2Mem] = None,
+        self,
+        lazy: Optional[SgaFsDriveV2Lazy] = None,
+        mem: Optional[SgaFsDriveV2Mem] = None,
     ):
         if lazy is not None and mem is not None:
             raise RelicToolError(
@@ -1235,12 +1294,12 @@ class _V2TocDisassembler:
         return self._write_name_to_table(name_table, name.lower())
 
     def write_data(
-            self,
-            name: str,
-            modified: Union[int, float, datetime],
-            uncompressed: bytes,
-            storage_type: StorageType,
-            path: Optional[str] = None,
+        self,
+        name: str,
+        modified: Union[int, float, datetime],
+        uncompressed: bytes,
+        storage_type: StorageType,
+        path: Optional[str] = None,
     ) -> Tuple[int, Tuple[int, int]]:
         handle = self.data_block
 
@@ -1283,16 +1342,16 @@ class _V2TocDisassembler:
         return result
 
     def write_drive(
-            self,
-            alias: Optional[str] = None,
-            name: Optional[str] = None,
-            first_folder: Optional[int] = None,
-            last_folder: Optional[int] = None,
-            first_file: Optional[int] = None,
-            last_file: Optional[int] = None,
-            root_folder: Optional[int] = None,
-            *,
-            window_start: Optional[int] = None,
+        self,
+        alias: Optional[str] = None,
+        name: Optional[str] = None,
+        first_folder: Optional[int] = None,
+        last_folder: Optional[int] = None,
+        first_file: Optional[int] = None,
+        last_file: Optional[int] = None,
+        root_folder: Optional[int] = None,
+        *,
+        window_start: Optional[int] = None,
     ) -> None:
         handle = self.drive_block
 
@@ -1323,14 +1382,14 @@ class _V2TocDisassembler:
                 toc_drive.root_folder = root_folder
 
     def write_file(
-            self,
-            name_offset: Optional[int] = None,
-            storage_type: Optional[StorageType] = None,
-            data_offset: Optional[int] = None,
-            compressed_size: Optional[int] = None,
-            decompressed_size: Optional[int] = None,
-            *,
-            window_start: Optional[int] = None,
+        self,
+        name_offset: Optional[int] = None,
+        storage_type: Optional[StorageType] = None,
+        data_offset: Optional[int] = None,
+        compressed_size: Optional[int] = None,
+        decompressed_size: Optional[int] = None,
+        *,
+        window_start: Optional[int] = None,
     ) -> int:
         _TOC_FILE_HANDLERS = {
             SgaV2GameFormat.DawnOfWar: SgaTocFileV2Dow,
@@ -1365,14 +1424,14 @@ class _V2TocDisassembler:
             return window_start
 
     def write_folder(
-            self,
-            name_offset: Optional[int] = None,
-            first_folder: Optional[int] = None,
-            last_folder: Optional[int] = None,
-            first_file: Optional[int] = None,
-            last_file: Optional[int] = None,
-            *,
-            window_start: Optional[int] = None,
+        self,
+        name_offset: Optional[int] = None,
+        first_folder: Optional[int] = None,
+        last_folder: Optional[int] = None,
+        first_file: Optional[int] = None,
+        last_file: Optional[int] = None,
+        *,
+        window_start: Optional[int] = None,
     ) -> int:
         handle = self.folder_block
 
@@ -1441,10 +1500,10 @@ class _V2TocDisassembler:
         # return self.get_info()
 
     def __exit__(
-            self,
-            exc_type: Optional[Type[BaseException]],
-            exc_val: Optional[BaseException],
-            exc_tb: Optional[TracebackType],
+        self,
+        exc_type: Optional[Type[BaseException]],
+        exc_val: Optional[BaseException],
+        exc_tb: Optional[TracebackType],
     ) -> None:
         self.close()
 
@@ -1473,7 +1532,7 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
         return self.write_name_in_drive("", path)
 
     def write_fs_tree_names(
-            self, folder: _SgaFsFolderV2, path: Optional[str] = None
+        self, folder: _SgaFsFolderV2, path: Optional[str] = None
     ) -> None:
         # Writes file names in manner mostly consistent with default SGA archives
         # file names I believe are written in the order that the .arciv file specifies,
@@ -1510,7 +1569,7 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
         #     self.write_name(file_path)
 
     def write_fs_sub_folders(
-            self, folder: _SgaFsFolderV2
+        self, folder: _SgaFsFolderV2
     ) -> List[Tuple[int, _SgaFsFolderV2]]:
         # Fills the folder buffer with temp folders
         results = []
@@ -1521,7 +1580,7 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
         return results
 
     def write_fs_file(
-            self, file: _SgaFsFileV2, write_back: Optional[int] = None
+        self, file: _SgaFsFileV2, write_back: Optional[int] = None
     ) -> None:
         name = file.name
         modified = file.modified
@@ -1549,10 +1608,10 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
         # return index
 
     def write_fs_folder(
-            self,
-            folder: _SgaFsFolderV2,
-            path: Optional[str] = None,
-            write_back: Optional[int] = None,
+        self,
+        folder: _SgaFsFolderV2,
+        path: Optional[str] = None,
+        write_back: Optional[int] = None,
     ) -> None:
         name = folder.name
         full_path = SgaPathResolver.join(path, name) if path is not None else name
@@ -1622,11 +1681,11 @@ class SgaFsV2TocDisassembler(_V2TocDisassembler):
 
 class ArcivV2TocDisassembler(_V2TocDisassembler):
     def __init__(
-            self,
-            filesystem: Optional[FS],
-            arciv: Arciv,
-            game_format: Optional[SgaV2GameFormat] = None,
-            filesystem_root: Optional[str] = None,
+        self,
+        filesystem: Optional[FS],
+        arciv: Arciv,
+        game_format: Optional[SgaV2GameFormat] = None,
+        filesystem_root: Optional[str] = None,
     ):
         super().__init__(game_format or SgaV2GameFormat.DawnOfWar)
         self.filesystem = filesystem
@@ -1654,7 +1713,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             return path
 
     def write_arciv_sub_folders(
-            self, folder: TocFolderItem
+        self, folder: TocFolderItem
     ) -> List[Tuple[int, TocFolderItem]]:
         # Fills the folder buffer with temp folders
         results = []
@@ -1665,7 +1724,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         return results
 
     def write_arciv_sub_files(
-            self, folder: TocFolderItem
+        self, folder: TocFolderItem
     ) -> list[Tuple[int, TocFileItem]]:
         # Fills the folder buffer with temp folders
         sorted_results = {}
@@ -1692,7 +1751,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             self.write_arciv_file_names(folder, drive)
 
     def write_arciv_folder_names(
-            self, folder: TocFolderItem, drive: TocItem, path: Optional[str] = None
+        self, folder: TocFolderItem, drive: TocItem, path: Optional[str] = None
     ) -> None:
         name = folder.FolderInfo.folder
         parent_full_path = (
@@ -1701,7 +1760,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         self._write_name_in_drive(drive, parent_full_path)
 
         for sub_folder in sorted(
-                folder.Folders, key=lambda x: x.FolderInfo.folder.lower()
+            folder.Folders, key=lambda x: x.FolderInfo.folder.lower()
         ):
             full_subfolder_path = SgaPathResolver.join(
                 parent_full_path, sub_folder.FolderInfo.folder
@@ -1718,7 +1777,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             self.write_arciv_file_names(toc_item.RootFolder, toc_item)
 
     def _get_fs_info(
-            self, path: str, namespaces: List[str], fs_info: Optional[Tuple[FS, str]] = None
+        self, path: str, namespaces: List[str], fs_info: Optional[Tuple[FS, str]] = None
     ) -> Info:
         if fs_info is not None:
             filesystem, _ = fs_info
@@ -1745,11 +1804,11 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         return Info(_INFO)
 
     def write_arciv_file(
-            self,
-            file: TocFileItem,
-            drive: TocItem,
-            write_back: Optional[int] = None,
-            fs_info: Optional[Tuple[FS, str]] = None,
+        self,
+        file: TocFileItem,
+        drive: TocItem,
+        write_back: Optional[int] = None,
+        fs_info: Optional[Tuple[FS, str]] = None,
     ) -> None:
         name = file.File.lower()
         fs_path = self._get_fspath(str(file.Path), fs_info)
@@ -1791,14 +1850,14 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         # return index
 
     def write_arciv_folder(
-            self,
-            folder: TocFolderItem,
-            drive: TocItem,
-            path: Optional[str] = None,
-            write_back: Optional[int] = None,
-            fs_info: Optional[Tuple[FS, str]] = None,
-            *,
-            root_folder: bool = False,
+        self,
+        folder: TocFolderItem,
+        drive: TocItem,
+        path: Optional[str] = None,
+        write_back: Optional[int] = None,
+        fs_info: Optional[Tuple[FS, str]] = None,
+        *,
+        root_folder: bool = False,
     ) -> None:
         name = folder.FolderInfo.folder
         full_path = SgaPathResolver.join(path, name) if path is not None else name
@@ -1832,7 +1891,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         )
 
     def write_arciv_drive(
-            self, drive: TocItem, fs_info: Optional[Tuple[FS, str]] = None
+        self, drive: TocItem, fs_info: Optional[Tuple[FS, str]] = None
     ) -> None:
         name = drive.TOCHeader.Name
         alias = drive.TOCHeader.Alias
@@ -1999,15 +2058,15 @@ class _SgaV2Serializer:
 
     @classmethod
     def write_meta_block(
-            cls,
-            handle: BinaryIO,
-            file_md5: Optional[bytes] = None,
-            name: Optional[str] = None,
-            header_md5: Optional[bytes] = None,
-            data_pos: Optional[int] = None,
-            header_size: Optional[int] = None,
-            *,
-            window_start: Optional[int] = None,
+        cls,
+        handle: BinaryIO,
+        file_md5: Optional[bytes] = None,
+        name: Optional[str] = None,
+        header_md5: Optional[bytes] = None,
+        data_pos: Optional[int] = None,
+        header_size: Optional[int] = None,
+        *,
+        window_start: Optional[int] = None,
     ) -> int:
         window_size = SgaHeaderV2.Meta.size
         if window_start is None:
@@ -2031,19 +2090,19 @@ class _SgaV2Serializer:
 
     @classmethod
     def write_toc_header(
-            cls,
-            handle: BinaryIO,
-            drive_pos: Optional[int] = None,
-            drive_count: Optional[int] = None,
-            folder_pos: Optional[int] = None,
-            folder_count: Optional[int] = None,
-            file_pos: Optional[int] = None,
-            file_count: Optional[int] = None,
-            name_pos: Optional[int] = None,
-            name_count: Optional[int] = None,
-            *,
-            update: bool = False,
-            window_start: Optional[int] = None,
+        cls,
+        handle: BinaryIO,
+        drive_pos: Optional[int] = None,
+        drive_count: Optional[int] = None,
+        folder_pos: Optional[int] = None,
+        folder_count: Optional[int] = None,
+        file_pos: Optional[int] = None,
+        file_count: Optional[int] = None,
+        name_pos: Optional[int] = None,
+        name_count: Optional[int] = None,
+        *,
+        update: bool = False,
+        window_start: Optional[int] = None,
     ) -> int:
         if window_start is None:
             window_start = handle.tell()
@@ -2056,7 +2115,7 @@ class _SgaV2Serializer:
         with BinaryWindow(handle, window_start, window_size) as window:
             toc_header = SgaTocHeaderV2(window)
             areas = [
-                toc_header.root_folder,
+                toc_header.drive,
                 toc_header.folder,
                 toc_header.file,
                 toc_header.name,
@@ -2077,12 +2136,12 @@ class _SgaV2Serializer:
 
     @classmethod
     def write_toc(
-            cls,
-            handle: BinaryIO,
-            drive_block: BinaryIO,
-            folder_block: BinaryIO,
-            file_block: BinaryIO,
-            name_block: BinaryIO,
+        cls,
+        handle: BinaryIO,
+        drive_block: BinaryIO,
+        folder_block: BinaryIO,
+        file_block: BinaryIO,
+        name_block: BinaryIO,
     ) -> Tuple[Tuple[int, int, int, int], int]:
         blocks = [drive_block, folder_block, file_block, name_block]
         positions = [-1] * len(blocks)
@@ -2108,12 +2167,12 @@ class _SgaV2Serializer:
 
 class SgaFsV2Serializer(_SgaV2Serializer):
     def __init__(
-            self,
-            sga: EssenceFSV2,
-            handle: BinaryIO,
-            game_format: Optional[SgaV2GameFormat] = None,
-            name: Optional[str] = None,
-            safe_mode: bool = False,
+        self,
+        sga: EssenceFSV2,
+        handle: BinaryIO,
+        game_format: Optional[SgaV2GameFormat] = None,
+        name: Optional[str] = None,
+        safe_mode: bool = False,
     ):
         if name is None and hasattr(handle, "name"):  # Try to use file name
             name, _ = os.path.splitext(os.path.basename(handle.name))
@@ -2135,13 +2194,13 @@ class SgaFsV2Serializer(_SgaV2Serializer):
 
 class ArcivV2Serializer(_SgaV2Serializer):
     def __init__(
-            self,
-            arciv: Arciv,
-            handle: BinaryIO,
-            filesystem: Optional[FS] = None,
-            game_format: Optional[SgaV2GameFormat] = None,
-            name: Optional[str] = None,
-            safe_mode: bool = False,
+        self,
+        arciv: Arciv,
+        handle: BinaryIO,
+        filesystem: Optional[FS] = None,
+        game_format: Optional[SgaV2GameFormat] = None,
+        name: Optional[str] = None,
+        safe_mode: bool = False,
     ):
         name = name or arciv.ArchiveHeader.ArchiveName
 
@@ -2161,10 +2220,10 @@ class ArcivV2Serializer(_SgaV2Serializer):
             raise
 
         with ArcivV2TocDisassembler(
-                self.filesystem,
-                arciv=self.arciv,
-                game_format=self.game,
-                filesystem_root=sys_path,
+            self.filesystem,
+            arciv=self.arciv,
+            game_format=self.game,
+            filesystem_root=sys_path,
         ) as disassembler:
             disassembler.disassemble()
             yield disassembler.get_info()
@@ -2175,11 +2234,11 @@ class SgaFsV2Assembler:
 
     @classmethod
     def resolve_storage_type(
-            cls,
-            resolvers: List[TocStorage],
-            path: str,
-            size: int,
-            default_storage_type: StorageType = DEFAULT_STORAGE_TYPE,
+        cls,
+        resolvers: List[TocStorage],
+        path: str,
+        size: int,
+        default_storage_type: StorageType = DEFAULT_STORAGE_TYPE,
     ) -> StorageType:
         def _check_size(min_size: int, max_size: int, _size: int) -> bool:
             min_check = min_size == -1 or (0 <= min_size <= _size)
@@ -2207,7 +2266,7 @@ class SgaFsV2Assembler:
 
     @classmethod
     def assemble_file_tree(
-            cls, header: TocHeader, file: TocFileItem, path: Optional[str] = None
+        cls, header: TocHeader, file: TocFileItem, path: Optional[str] = None
     ) -> Iterable[Tuple[str, str, StorageType]]:
         # ALias is not included in the path
         name = file.File  # File is name; confusingly
@@ -2223,7 +2282,7 @@ class SgaFsV2Assembler:
 
     @classmethod
     def assemble_folder_tree(
-            cls, header: TocHeader, folder: TocFolderItem, path: Optional[str] = None
+        cls, header: TocHeader, folder: TocFolderItem, path: Optional[str] = None
     ) -> Iterable[Tuple[str, str, StorageType]]:
         # ALias is not included in the path
         name = folder.FolderInfo.folder  # folder is name; confusingly
@@ -2242,7 +2301,7 @@ class SgaFsV2Assembler:
         for toc in manifest.TOCList:
             with sga.create_drive(toc.TOCHeader.Name, toc.TOCHeader.Alias) as drive:
                 for file_path, sys_path, storage_type in cls.assemble_folder_tree(
-                        toc.TOCHeader, toc.RootFolder
+                    toc.TOCHeader, toc.RootFolder
                 ):
                     parent_folder_name, file_name = SgaPathResolver.split(file_path)
                     sys_file_info = os.stat(sys_path)
@@ -2252,7 +2311,7 @@ class SgaFsV2Assembler:
                     )
 
                     with drive.makedirs(
-                            parent_folder_name, recreate=True
+                        parent_folder_name, recreate=True
                     ) as parent_folder:
                         with open(sys_path, "rb") as file_src:
                             with parent_folder.openbin(file_name, "w") as file_dst:
@@ -2278,22 +2337,22 @@ class SgaFsV2Assembler:
 class SgaFsV2Packer:
     @classmethod
     def serialize_sga(
-            cls,
-            sga: EssenceFSV2,
-            handle: BinaryIO,
-            name: Optional[str] = None,
-            safe_mode: bool = False,
+        cls,
+        sga: EssenceFSV2,
+        handle: BinaryIO,
+        name: Optional[str] = None,
+        safe_mode: bool = False,
     ) -> None:
         serializer = SgaFsV2Serializer(sga, handle, name=name, safe_mode=safe_mode)
         serializer.write()
 
     @classmethod
     def serialize_arciv(
-            cls,
-            arciv: Arciv,
-            handle: BinaryIO,
-            name: Optional[str] = None,
-            safe_mode: bool = False,
+        cls,
+        arciv: Arciv,
+        handle: BinaryIO,
+        name: Optional[str] = None,
+        safe_mode: bool = False,
     ) -> None:
         serializer = ArcivV2Serializer(
             arciv, handle=handle, name=name, safe_mode=safe_mode
@@ -2328,10 +2387,10 @@ class EssenceFSV2(EssenceFS):
 
     @classmethod
     def open_sga(
-            cls,
-            path: str | PathLike[str] | BinaryIO | bytes,
-            parent_fs: Optional[FS] = None,
-            mode: str = "r",
+        cls,
+        path: str | PathLike[str] | BinaryIO | bytes,
+        parent_fs: Optional[FS] = None,
+        mode: str = "r",
     ) -> EssenceFSV2:
         if isinstance(path, (str, PathLike, bytes)):
             _mode = Mode(mode)
@@ -2339,37 +2398,36 @@ class EssenceFSV2(EssenceFS):
             handle_mode = _mode.to_platform_bin()
             if _mode.text:
                 logger.warning(
-                    f"Opening `{path}` with mode `{mode}` (text) is not supported, opening as `{handle_mode}` (binary)"
+                    f"Opening `{path!r}` with mode `{mode}` (text) is not supported, opening as `{handle_mode}` (binary)"
                 )
 
-            handle: IO
+            handle: Union[IO[bytes], IO[str]]
             if parent_fs is None:
                 handle = open(path, handle_mode)
             else:
-                handle = parent_fs.open(path, handle_mode)
+                handle = parent_fs.open(str(path), handle_mode)
         else:
             if parent_fs is not None:
                 logger.warning(
                     f"Parent FS is ignored when opening via a binary handle; the handle is passed in directly."
                 )
-
-            handle = cast(path, IO)
+            handle = cast(Union[IO[bytes]], path)
         binary_handle = cast(
-            handle, BinaryIO
+            BinaryIO, handle
         )  # handle is binary, tell mypy via casting
         return cls(binary_handle, parse_handle=True, game=None, in_memory=False)
 
     def __init__(
-            self,
-            stream: BinaryIO = None,
-            parse_handle: bool = False,
-            game: Optional[SgaV2GameFormat] = None,
-            in_memory: bool = False,
-            *,
-            name: Optional[str] = None,
-            verify_header: bool = False,
-            verify_file: bool = False,
-            editable: bool = True,
+        self,
+        stream: Optional[BinaryIO] = None,
+        parse_handle: bool = False,
+        game: Optional[SgaV2GameFormat] = None,
+        in_memory: bool = False,
+        *,
+        name: Optional[str] = None,
+        verify_header: bool = False,
+        verify_file: bool = False,
+        editable: bool = True,
     ):
         """
         :param stream: The backing IO object to read/write to. If not present, the archive is automatically treated as an empty in-memory archive.
@@ -2454,7 +2512,7 @@ class EssenceFSV2(EssenceFS):
             self._unlazy()  # we can't write to a lazily read file, we load the archive into memory; if its in memory this does nothing
             out = self._stream
 
-        SgaFsV2Packer.serialize_sga(self, out, safe_mode=safe_write)  # type: ignore
+        SgaFsV2Packer.serialize_sga(self, cast(BinaryIO, out), safe_mode=safe_write)
 
     def getmeta(self, namespace: str = "standard") -> Mapping[str, object]:
         if namespace == NS_ESSENCE:
@@ -2485,8 +2543,8 @@ class EssenceFSV2(EssenceFS):
         files = [
             SgaFsFileV2(
                 lazy=SgaFsFileV2Lazy(
-                    toc_file,
-                    SgaTocFileDataV2Dow(
+                    cast(Union[SgaTocFileV2Dow, SgaTocFileV2ImpCreatures], toc_file),
+                    SgaTocFileDataV2(
                         toc_file,
                         name_window,
                         data_window,
@@ -2519,7 +2577,7 @@ class EssenceFSV2(EssenceFS):
 
     @staticmethod
     def _getnode_from_drive(
-            drive: _SgaFsDriveV2, path: str, exists: bool = False
+        drive: _SgaFsDriveV2, path: str, exists: bool = False
     ) -> Optional[Union[_SgaFsFileV2, _SgaFsFolderV2]]:
         current = drive.root
 
@@ -2539,7 +2597,7 @@ class EssenceFSV2(EssenceFS):
         return current
 
     def _getnode(
-            self, path: str, exists: bool = False
+        self, path: str, exists: bool = False
     ) -> Optional[Union[_SgaFsFileV2, _SgaFsFolderV2]]:
         alias, _path = SgaPathResolver.parse(path)
         if alias is not None:
@@ -2582,10 +2640,10 @@ class EssenceFSV2(EssenceFS):
         return parent, _child
 
     def makedir(
-            self,
-            path: str,
-            permissions: Optional[Permissions] = None,
-            recreate: bool = False,
+        self,
+        path: str,
+        permissions: Optional[Permissions] = None,
+        recreate: bool = False,
     ) -> SubFS[EssenceFSV2]:
         alias, _path = SgaPathResolver.parse(path)
         if alias is not None and _path == SgaPathResolver.ROOT:  # Make Drive
@@ -2600,7 +2658,7 @@ class EssenceFSV2(EssenceFS):
             try:
                 parent.add_folder(SgaFsFolderV2Mem(child_name))
             except (
-                    fs.errors.DirectoryExists
+                fs.errors.DirectoryExists
             ) as dir_err:  # Ignore if recreate, otherwise inject path
                 if not recreate:
                     dir_err.path = path
@@ -2614,10 +2672,10 @@ class EssenceFSV2(EssenceFS):
         return self.opendir(path)  # type: ignore
 
     def makedirs(
-            self,
-            path: str,
-            permissions: Optional[Permissions] = None,
-            recreate: bool = False,
+        self,
+        path: str,
+        permissions: Optional[Permissions] = None,
+        recreate: bool = False,
     ) -> SubFS[EssenceFSV2]:
         alias, _path = SgaPathResolver.parse(path)
         alias_path = SgaPathResolver.build(alias=alias)
@@ -2647,7 +2705,7 @@ class EssenceFSV2(EssenceFS):
         return current
 
     def openbin(
-            self, path: str, mode: str = "r", buffering: int = -1, **options: Any
+        self, path: str, mode: str = "r", buffering: int = -1, **options: Any
     ) -> BinaryIO:
         _mode = Mode(mode)
         parent, child = self._try_enter_parent(path)
@@ -2716,7 +2774,7 @@ class EssenceFSV2(EssenceFS):
         return self
 
     def __exit__(
-            self, exc_type: Optional[Type[BaseException]], exc_val: Any, exc_tb: Any
+        self, exc_type: Optional[Type[BaseException]], exc_val: Any, exc_tb: Any
     ) -> None:
         if self._update_stream:
             self.save(safe_write=True)
@@ -2724,10 +2782,10 @@ class EssenceFSV2(EssenceFS):
         return super().__exit__(exc_type, exc_val, exc_tb)
 
     def scandir(
-            self,
-            path: str,
-            namespaces: Optional[Collection[str]] = None,
-            page: Optional[Tuple[int, int]] = None,
+        self,
+        path: str,
+        namespaces: Optional[Collection[str]] = None,
+        page: Optional[Tuple[int, int]] = None,
     ) -> Iterator[Info]:
         alias, root = SgaPathResolver.parse(path)
         info = (
@@ -2741,5 +2799,6 @@ class EssenceFSV2(EssenceFS):
             start, end = page
             iter_info = itertools.islice(iter_info, start, end)  # type: ignore
         return iter_info
+
 
 # class SgaV2Verifier()

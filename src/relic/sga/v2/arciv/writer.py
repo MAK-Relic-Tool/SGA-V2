@@ -243,7 +243,7 @@ class ArcivEncoder:
             #   These classes may not map 1-1 to the file; such as the root; which has an implied ARCHIVE = field
             return obj.to_parser_dict()
         if dataclasses.is_dataclass(obj):
-            return dataclasses.asdict(obj)
+            return dataclasses.asdict(obj)  # type: ignore
         if isinstance(obj, (str, int, float, dict, list, PathLike)):
             return obj
         raise ArcivEncoderError(

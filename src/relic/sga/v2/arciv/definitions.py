@@ -22,7 +22,7 @@ class ArchiveHeader:
     ArchiveName: str
 
     @classmethod
-    def default(cls):
+    def default(cls) -> ArchiveHeader:
         return ArchiveHeader("Default Archive Name")
 
 
@@ -153,7 +153,7 @@ class Arciv(_ArcivSpecialEncodable):
     TOCList: List[TocItem]
 
     @classmethod
-    def default(cls):
+    def default(cls) -> Arciv:
         return Arciv(ArchiveHeader.default(), [])
 
     @classmethod
@@ -174,5 +174,5 @@ class Arciv(_ArcivSpecialEncodable):
             raise ArcivLayoutError from e
 
     def to_parser_dict(self) -> Dict[str, Any]:
-        logger.debug(f"Converting {self.__name__} to dictionary")
+        logger.debug(f"Converting {self.__class__.__name__} to dictionary")
         return {"Archive": dataclasses.asdict(self)}

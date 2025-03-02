@@ -5,7 +5,7 @@ repos:
   - id: check-yaml
   - id: end-of-file-fixer
   - id: trailing-whitespace
-  - id: check-case-conflict
+#  - id: check-case-conflict
   - id: check-docstring-first
   - id: check-json
   - id: pretty-format-json
@@ -35,8 +35,8 @@ repos:
   - id: pretty-format-toml
     args: [--autofix]
 
-- repo: https://github.com/PyCQA/docformatter
-  rev: v1.7.5
-  hooks:
-  - id: docformatter
-    args: [--black, --in-place, --recursive]
+#- repo: https://github.com/PyCQA/docformatter
+#  rev: v1.7.5
+#  hooks:
+#  - id: docformatter
+#    args: [--black, --in-place, --recursive]

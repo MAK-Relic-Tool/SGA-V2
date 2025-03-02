@@ -1,9 +1,13 @@
 import pytest
-from relic.sga.v2.essencefs.definitions import (
-    SgaPathResolver, PureSgaPath
-)
+from relic.sga.v2.essencefs.definitions import SgaPathResolver, PureSgaPath
 
-_parts = ["test"], ["fold", "file"], ["Upper"], ["Upper", "Downer"], ["Up","down","left","right","B","A","START"]
+_parts = (
+    ["test"],
+    ["fold", "file"],
+    ["Upper"],
+    ["Upper", "Downer"],
+    ["Up", "down", "left", "right", "B", "A", "START"],
+)
 _parts_ids = ["/".join(_) for _ in _parts]
 _aliases = "drive", None
 
@@ -12,7 +16,9 @@ _aliases = "drive", None
 @pytest.mark.parametrize("alias", _aliases)
 def test_build_str(parts: list[str], alias: str | None):
     pather = SgaPathResolver.build(*parts, alias=alias)
-    purePath = PureSgaPath(f"{alias}:", *parts) if alias is not None else PureSgaPath(*parts)
+    purePath = (
+        PureSgaPath(f"{alias}:", *parts) if alias is not None else PureSgaPath(*parts)
+    )
     purePathStr = str(purePath)
 
     assert purePathStr == pather
@@ -23,10 +29,16 @@ def test_build_str(parts: list[str], alias: str | None):
 def test_parse(parts: list[str], alias: str | None):
     path = SgaPathResolver.build(*parts, alias=alias)
     alias, stem = SgaPathResolver.parse(path)
-    purePath = PureSgaPath(f"{alias}:", *parts) if alias is not None else PureSgaPath(*parts)
+    purePath = (
+        PureSgaPath(f"{alias}:", *parts) if alias is not None else PureSgaPath(*parts)
+    )
 
     assert purePath.drive == (f"{alias}:" if alias is not None else "")
-    assert purePath.root + PureSgaPath._flavour.sep.join(purePath.parts[(0 if alias is None else 1):]) == stem
+    assert (
+        purePath.root
+        + PureSgaPath._flavour.sep.join(purePath.parts[(0 if alias is None else 1) :])
+        == stem
+    )
 
 
 @pytest.mark.parametrize("parts", _parts, ids=_parts_ids)
@@ -37,6 +49,7 @@ def test_split_parts(parts: list[str]):
     parts = SgaPathResolver.split_parts(path, False)
 
     assert purePath.parts == tuple(parts)
+
 
 @pytest.mark.parametrize("parts", _parts, ids=_parts_ids)
 def test_join(parts: list[str]):
@@ -51,7 +64,10 @@ def test_split(parts: list[str]):
     path = SgaPathResolver.build(*parts)
     purePath = PureSgaPath.Aliased(*parts)
     head, tail = SgaPathResolver.split(path)
-    pHead, pTail = PureSgaPath._flavour.sep.join(purePath.parts[:-1]), purePath.parts[-1]
+    pHead, pTail = (
+        PureSgaPath._flavour.sep.join(purePath.parts[:-1]),
+        purePath.parts[-1],
+    )
 
     assert pHead == head
     assert pTail == tail
@@ -64,6 +80,7 @@ def test_strip_root(parts: list[str]):
     purePath = PureSgaPath.Aliased(*parts)
     assert purePath.tail == stripped
 
+
 @pytest.mark.parametrize("parts", _parts, ids=_parts_ids)
 def test_dirname(parts: list[str]):
     path = SgaPathResolver.build(*parts)
@@ -73,6 +90,7 @@ def test_dirname(parts: list[str]):
     if parent == ".":
         parent = ""
     assert parent == dir
+
 
 @pytest.mark.parametrize("parts", _parts, ids=_parts_ids)
 def test_basename(parts: list[str]):

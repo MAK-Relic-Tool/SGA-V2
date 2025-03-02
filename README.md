@@ -47,9 +47,9 @@ relic sga pack v2 manifest [out_path]
 usage: relic sga pack v2 [-h] [--log [LOG]] [--loglevel [{none,debug,info,warning,error,critical}]] [--logconfig [LOGCONFIG]] manifest [out_path]
 
 positional arguments:
-  manifest              An .arciv file (or a suitable .json matching the .arciv tree). If the file extension is not '.json' or '.arciv', '.arciv'  
+  manifest              An .arciv file (or a suitable .json matching the .arciv tree). If the file extension is not '.json' or '.arciv', '.arciv'
                         is assumed
-  out_path              The path to the output SGA file. If the path is a directory, the SGA will be placed in the directory using the name        
+  out_path              The path to the output SGA file. If the path is a directory, the SGA will be placed in the directory using the name
                         specified in the manifest. If not specified, defaults to the manifest's directory.
 
 options:
