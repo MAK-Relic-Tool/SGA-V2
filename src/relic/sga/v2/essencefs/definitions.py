@@ -216,7 +216,41 @@ class PureSgaPath(PurePath):
     """PurePath subclass for SGA Archives (V2)."""
 
     _flavour = SgaFlavour
-    __slots__ = ()
+    __slots__ = (
+        # The `_raw_paths` slot stores unnormalized string paths. This is set
+        # in the `__init__()` method.
+        "_raw_paths",
+        # The `_drv`, `_root` and `_tail_cached` slots store parsed and
+        # normalized parts of the path. They are set when any of the `drive`,
+        # `root` or `_tail` properties are accessed for the first time. The
+        # three-part division corresponds to the result of
+        # `os.path.splitroot()`, except that the tail is further split on path
+        # separators (i.e. it is a list of strings), and that the root and
+        # tail are normalized.
+        "_drv",
+        "_root",
+        "_tail_cached",
+        # The `_str` slot stores the string representation of the path,
+        # computed from the drive, root and tail when `__str__()` is called
+        # for the first time. It's used to implement `_str_normcase`
+        "_str",
+        # The `_str_normcase_cached` slot stores the string path with
+        # normalized case. It is set when the `_str_normcase` property is
+        # accessed for the first time. It's used to implement `__eq__()`
+        # `__hash__()`, and `_parts_normcase`
+        "_str_normcase_cached",
+        # The `_parts_normcase_cached` slot stores the case-normalized
+        # string path after splitting on path separators. It's set when the
+        # `_parts_normcase` property is accessed for the first time. It's used
+        # to implement comparison methods like `__lt__()`.
+        "_parts_normcase_cached",
+        # The `_lines_cached` slot stores the string path with path separators
+        # and newlines swapped. This is used to implement `match()`.
+        "_lines_cached",
+        # The `_hash` slot stores the hash of the case-normalized string
+        # path. It's set when `__hash__()` is called for the first time.
+        "_hash",
+    )
 
     def __init__(self, *args: str):
         super().__init__(*args)
@@ -278,10 +312,10 @@ class BoundPath(pathlib.Path):
         for name in self._boundfs.listdir(str(self)):
             yield _DirEntry(self._make_child_relpath(name))  # type: ignore
 
-    def owner(self) -> None:
+    def owner(self) -> str:
         raise NotImplementedError
 
-    def group(self) -> None:
+    def group(self) -> str:
         raise NotImplementedError
 
     def touch(self, mode: int = 0o666, exist_ok: bool = True) -> None:
