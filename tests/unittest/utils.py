@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -17,6 +18,8 @@ from fs.osfs import OSFS
 from fs.subfs import SubFS
 
 from relic.sga.v2.serialization import RelicDateTimeSerializer
+
+logger = logging.getLogger(__name__)
 
 
 def get_data_path(*parts: str) -> str:
@@ -55,10 +58,10 @@ def create_temp_dataset_fs(
 
 @dataclass
 class ManifestFileInfo:
-    modified: datetime | None
-    crc: int | None
-    drive: str | None
-    archive_path: str | None
+    modified: datetime | None = None
+    crc: int | None = None
+    drive: str | None = None
+    archive_path: str | None = None
 
     @classmethod
     def parse(cls, **kwargs: Any) -> ManifestFileInfo:
@@ -76,15 +79,23 @@ class Manifest:
 
     @classmethod
     def parse(cls, **kwargs: Any) -> Manifest:
+        _TOC = "toc"
         _FILES = "files"
 
         if _FILES in kwargs:
-            kwargs[_FILES] = {
+            logger.critical(
+                "Manifest tried parsing an outdated manifest, root was 'files' instead of 'toc'!"
+            )
+            kwargs[_TOC] = kwargs[_FILES]
+            del kwargs[_FILES]
+
+        if _TOC in kwargs:
+            kwargs[_TOC] = {
                 drive: {
                     path: ManifestFileInfo.parse(**info)
                     for path, info in file_manifest.items()
                 }
-                for drive, file_manifest in kwargs[_FILES].items()
+                for drive, file_manifest in kwargs[_TOC].items()
             }
 
         return cls(**kwargs)

@@ -1,9 +1,10 @@
+import zlib
 from pathlib import Path
 from typing import Iterable
 
 import fs
 import pytest
-from relic.sga.core.definitions import MAGIC_WORD
+from relic.sga.core.definitions import MAGIC_WORD, StorageType
 from relic.sga.core.serialization import VersionSerializer
 
 from relic.sga import v2
@@ -64,7 +65,7 @@ class TestEssenceFSOpener:
 
 
 # Hack to get "SampleSGA-v2" from the sample data
-_sample_path_on_disk = [f for f in v2_test_files if "SampleSGA-v2.sga" in f][0]
+# _sample_path_on_disk = [f for f in v2_test_files if "SampleSGA-v2.sga" in f][0]
 _sample_drives = ["test"]
 _MODIFIED = 1697739416
 _sample_data = b"Ready to unleash 11 barrels of lead.\nWhere's that artillery?!?!\nOrks are da biggust and da strongest.\nFix bayonets!\nFear me, but follow!\nCall for an earth-shaker?\nMy mind is too weary to fight on...\nWe'll be off as soon as the fuel arrives.\nWhere are those tech priests.\nFire until they see the glow of our barrels!"

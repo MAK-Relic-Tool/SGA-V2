@@ -13,6 +13,7 @@ from tests.unittest.utils import Manifest
 def validate_osfs_equal(src: OSFS, dst: OSFS, manifest: Manifest):
     for drive, files in manifest.toc.items():
         for file, meta in files.items():
+
             archive_file = meta.archive_path or file
 
             assert src.exists(file), f"File `{file}` doesn't exist on disk!"

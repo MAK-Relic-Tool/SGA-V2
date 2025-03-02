@@ -20,7 +20,14 @@ _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
 class RelicSgaV2Cli(CliPluginGroup):
     GROUP = "relic.cli.sga.v2"
-    COMMAND = "v2"
+
+    def _create_parser(
+        self, command_group: Optional[_SubParsersAction] = None
+    ) -> ArgumentParser:
+        name = "v2"
+        if command_group is None:
+            return RelicArgParser(name)
+        return command_group.add_parser(name)
 
 
 class RelicSgaPackV2Cli(CliPlugin):

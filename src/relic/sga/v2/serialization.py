@@ -377,6 +377,37 @@ class LazySgaTocFileDataHeaderV2Dow(
         buffer = RelicUnixTimeSerializer.pack(value)
         _ = self._serializer.write_bytes(buffer, *self.Meta.modified_ptr)
 
+    def check_header_valid(self) -> bool:
+        def _warn(name: str) -> None:
+            logger.warning(
+                f"Failed to parse File Data Header `{name}`, the header may be missing or invalid."
+            )
+
+        try:
+            try:
+                _name = self.name
+            except (RelicToolError, UnicodeDecodeError) as _1:
+                _warn("name")
+                return False
+            try:
+                _crc32 = self.crc32
+            except RelicToolError as _2:
+                _warn("crc32")
+                return False
+            try:
+                _modified = self.modified
+            except RelicToolError as _3:
+                _warn("modified")
+                return False
+
+        except Exception as e:
+            logger.critical(
+                """Encountered an unexpected error while performing the File Data Header's validation check.
+    Please submit a bug report if one has not already been submitted.""",
+                exc_info=e,
+            )
+        return True
+
 
 class SgaTocFileDataV2:
     def __init__(
@@ -399,7 +430,7 @@ class SgaTocFileDataV2:
         self._data_header: SgaTocFileDataHeaderV2DowProtocol
         # We can safely use our properties here EXCEPT FOR DATA_HEADER PROPS
         if has_safe_data_header or (
-            has_data_header and _lazy_data_header.header_is_valid()
+            has_data_header and _lazy_data_header.check_header_valid()
         ):
             logger.debug(
                 f"File `{self.name}` {'has' if has_safe_data_header else 'may have'} a Data Header"

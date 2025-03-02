@@ -27,22 +27,22 @@ _PH_SGA = "placeholder.sga"
 
 _ARGS = [
     (
-        ["sga", "pack", "v2", str(_DIR_THAT_DOESNT_EXIST), _PH_SGA],
+        ["sga", "v2", "pack", str(_DIR_THAT_DOESNT_EXIST), _PH_SGA],
         _ArgumentError(
             "manifest",
             f"The given path '{str(_DIR_THAT_DOESNT_EXIST)}' does not exist!",
         ),
     ),
     (
-        ["sga", "pack", "v2", str(_DIR), "dummy"],
+        ["sga", "v2", "pack", str(_DIR), "dummy"],
         _ArgumentError("manifest", f"The given path '{str(_DIR)}' is not a file!"),
     ),
     (
-        ["sga", "pack", "v2", str(_DIR)],
+        ["sga", "v2", "pack", str(_DIR)],
         _ArgumentError("manifest", f"The given path '{str(_DIR)}' is not a file!"),
     ),
     (
-        ["sga", "pack", "v2", str(_ILLEGAL_PATH)],
+        ["sga", "v2", "pack", str(_ILLEGAL_PATH)],
         _ArgumentError(
             "manifest", f"The given path '{str(_ILLEGAL_PATH)}' does not exist!"
         ),
