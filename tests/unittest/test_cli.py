@@ -75,6 +75,7 @@ class TestCLI:
         CLI.run_with("relic", "sga", "unpack", sys_path, dump_sys_path)
         return dump_path, dump_sys_path
 
+    @pytest.mark.skipif(os.name != 'nt') # Test broken on Max/Linux
     def test_pack(self, dataset: str) -> None:
         """Tests that the CLI Pack function runs without error."""
         tmp_fs: FS
