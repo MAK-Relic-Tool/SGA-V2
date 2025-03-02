@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 import os
+import time
+import zlib
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from enum import Enum
@@ -375,44 +377,157 @@ class LazySgaTocFileDataHeaderV2Dow(
         buffer = RelicUnixTimeSerializer.pack(value)
         _ = self._serializer.write_bytes(buffer, *self.Meta.modified_ptr)
 
-    def header_is_valid(self) -> bool:
-        def _warn(name: str) -> None:
-            logger.warning(
-                f"Failed to parse File Data Header `{name}`, the header may be missing or invalid."
+
+class _AssemblerV2(FSAssembler[FileDef]):
+    def assemble_file(self, parent_dir: FS, file_def: FileDef) -> None:
+        super().assemble_file(parent_dir, file_def)
+
+        # Still hate this, but might as well reuse it
+        _HEADER_SIZE = (
+            256 + 8
+        )  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 4 byte unk, and 4 byte checksum (crc32)
+        lazy_data_header = FileLazyInfo(
+            jump_to=self.ptrs.data_pos + file_def.data_pos - _HEADER_SIZE,
+            packed_size=_HEADER_SIZE,
+            unpacked_size=_HEADER_SIZE,
+            stream=self.stream,
+            decompress=False,  # header isn't zlib compressed
+        )
+
+        lazy_info_decomp = FileLazyInfo(
+            jump_to=self.ptrs.data_pos + file_def.data_pos,
+            packed_size=file_def.length_in_archive,
+            unpacked_size=file_def.length_on_disk,
+            stream=self.stream,
+            decompress=file_def.storage_type
+            != StorageType.STORE,  # self.decompress_files,
+        )
+
+        def _generate_crc32() -> bytes:
+            return zlib.crc32(lazy_info_decomp.read()).to_bytes(
+                4, "little", signed=False
             )
 
-        try:
-            try:
-                _name = self.name
-            except (RelicToolError, UnicodeDecodeError) as _1:
-                _warn("name")
-                return False
-            try:
-                _crc32 = self.crc32
-            except RelicToolError as _2:
-                _warn("crc32")
-                return False
-            try:
-                _modified = self.modified
-            except RelicToolError as _3:
-                _warn("modified")
-                return False
-
-        except Exception as e:
-            logger.critical(
-                """Encountered an unexpected error while performing the File Data Header's validation check.
-Please submit a bug report if one has not already been submitted.""",
-                exc_info=e,
+        def _set_info(_name: str, _modified: int, _crc32: bytes) -> None:
+            essence_info: Dict[str, Any] = dict(
+                parent_dir.getinfo(_name, [ESSENCE_NAMESPACE]).raw[ESSENCE_NAMESPACE]
             )
-        return True
+            essence_info["name"] = _name
+            essence_info["modified"] = _modified
+            essence_info["crc32"] = _crc32
+            info = {ESSENCE_NAMESPACE: essence_info}
+            parent_dir.setinfo(_name, info)
 
-    def get_valid_header(
-        self, name: str, data: bytes, modified: Optional[int] = None
-    ) -> SgaTocFileDataHeaderV2DowProtocol:
-        if self.header_is_valid():
-            return MemSgaTocFileDataHeaderV2Dow(self.name, self.crc32, self.modified)
+        def _generate_metadata() -> None:
+            name = self.names[file_def.name_pos]
+
+            info = parent_dir.getinfo(name, ["details"])
+            timestamp = info.get("details", "modified", time.time())
+            modified = int(timestamp)  # .to_bytes(4, "little", signed=False)
+
+            crc32 = _generate_crc32()
+            _set_info(name, modified, crc32)
+
+        if (
+            lazy_data_header.jump_to < 0
+            or lazy_data_header.jump_to >= lazy_info_decomp.jump_to
+        ):
+            # Ignore checksum / name ~ Archive does not have this metadata
+            # Recalculate it
+            _generate_metadata()
         else:
-            return MemSgaTocFileDataHeaderV2Dow.create(name, data, modified)
+            try:
+                data_header = lazy_data_header.read()
+                if len(data_header) != _HEADER_SIZE:
+                    _generate_metadata()
+                else:
+                    name = data_header[:256].rstrip(b"\0").decode("ascii")
+                    expected_name = self.names[file_def.name_pos]
+                    if name != expected_name:
+                        _generate_metadata()  # assume invalid metadata block
+                    else:
+                        modified_buffer: bytes = data_header[256:260]
+                        modified = int.from_bytes(
+                            modified_buffer, "little", signed=False
+                        )
+                        crc32 = data_header[260:264]
+                        crc32_generated = _generate_crc32()
+
+                        if crc32 != crc32_generated:
+                            raise MismatchError("CRC Checksum", crc32_generated, crc32)
+
+                        _set_info(name, modified, crc32)
+            except UnicodeDecodeError:
+                _generate_metadata()
+
+
+class _DisassassemblerV2(FSDisassembler[FileDef]):
+    _HEADER_SIZE = (
+        256 + 8
+    )  # 256 string buffer (likely 256 cause 'max path' on windows used to be 256), and 8 byte checksum
+
+    def disassemble_file(self, container_fs: FS, file_name: str) -> FileDef:
+        with container_fs.open(file_name, "rb") as handle:
+            data = handle.read()
+
+        metadata = dict(container_fs.getinfo(file_name, ["essence"]).raw["essence"])
+
+        file_def: FileDef = self.meta2def(metadata)
+        _storage_type_value: int = metadata["storage_type"]  # type: ignore
+        storage_type = StorageType(_storage_type_value)
+        if storage_type == StorageType.STORE:
+            store_data = data
+        elif storage_type in [
+            StorageType.BUFFER_COMPRESS,
+            StorageType.STREAM_COMPRESS,
+        ]:
+            store_data = zlib.compress(
+                data, level=9
+            )  # TODO process in chunks for large files
+        else:
+            raise NotImplementedError
+
+        file_def.storage_type = storage_type
+        file_def.length_on_disk = len(data)
+        file_def.length_in_archive = len(store_data)
+
+        file_def.name_pos = _get_or_write_name(
+            file_name, self.name_stream, self.flat_names
+        )
+
+        name_buffer = bytearray(b"\0" * 256)
+        name_buffer[0 : len(file_name)] = file_name.encode("ascii")
+        _name_buffer_pos = _write_data(name_buffer, self.data_stream)
+        uncompressed_crc = zlib.crc32(data)
+        # compressed_crc = zlib.crc32(store_data)
+        if "modified" in metadata and metadata["modified"] != int.from_bytes(
+            b"UNK\0", "little", signed=False
+        ):  # handle my unknown case ~ UNK\0 resolves to 1970, so I don't think we need to worry about that
+            timestamp: int = metadata["modified"]  # type: ignore
+            timestamp_buffer = timestamp.to_bytes(4, "little", signed=True)
+
+            # if creation/modification are different, use the new timestamp
+            # Cumbersome, but allows header MD5s to invalidate
+            info = container_fs.getinfo(file_name, ["details"])
+            modified = info.get("details", "modified", None)
+            created = info.get("details", "created", None)
+            if modified is not None and created is not None:
+                if int(modified) - int(created) != 0:
+                    timestamp_buffer = int(modified).to_bytes(4, "little", signed=False)
+
+        else:
+            info = container_fs.getinfo(file_name, ["details"])
+            timestamp: float = info.get("details", "modified", time.time())  # type: ignore
+            timestamp_buffer = int(timestamp).to_bytes(4, "little", signed=False)
+
+        _unk_buffer_pos = _write_data(timestamp_buffer, self.data_stream)
+
+        _crc_buffer_pos = _write_data(
+            uncompressed_crc.to_bytes(4, "little", signed=False), self.data_stream
+        )  # should always recalc the crc, regardless of the cached value in metadata
+        file_def.data_pos = _write_data(store_data, self.data_stream)
+
+        return file_def
 
 
 class SgaTocFileDataV2:
