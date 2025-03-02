@@ -61,7 +61,7 @@ class TestCLI:
         sys_path = filesystem.getsyspath(arciv.path)
         packed_name = "Packed"
         sga_name, _ = os.path.splitext(arciv.path)
-        packed_path = fs.path.join(packed_name, sga_name + ".sga")
+        packed_path = os.path.join(packed_name, sga_name + ".sga")
         packed_sys_path = os.path.join(os.path.dirname(sys_path), packed_path[1:])
         CLI.run_with("relic", "sga", "v2", "pack", sys_path, packed_sys_path)
         return packed_path, packed_sys_path
@@ -70,7 +70,7 @@ class TestCLI:
         sys_path = filesystem.getsyspath(sga.path)
         dump_name = "Unpacked"
         sga_name, _ = os.path.splitext(sga.path)
-        dump_path = fs.path.join(sga_name, dump_name)
+        dump_path = os.path.join(sga_name, dump_name)
         dump_sys_path = os.path.join(os.path.dirname(sys_path), dump_path[1:])
         CLI.run_with("relic", "sga", "unpack", sys_path, dump_sys_path)
         return dump_path, dump_sys_path
