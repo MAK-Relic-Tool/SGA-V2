@@ -1,4 +1,3 @@
 fs >= 2.4.16
-mak-serialization-tools==2022.0a19
 ply >= 3.11
-relic-tool-sga-core>=1.1.3
+relic-tool-sga-core>=2.0.0
