@@ -1,7 +1,12 @@
+"""
+Lexer for '.arciv' file
+"""
+
 from typing import Any
 
 from ply import lex
 from ply.lex import LexToken, Lexer, LexError
+
 
 reserved = {
     "Archive": "KW_ARCHIVE",
@@ -37,7 +42,7 @@ tokens = [
 literals = ["{", "}", ",", "="]
 
 
-def t_NAME(t: LexToken) -> LexToken:
+def t_NAME(t: LexToken) -> LexToken:  # pylint: disable=C0103
     r"""[A-Za-z]+"""
     t.type = reserved.get(t.value, "NAME")
     return t
@@ -67,14 +72,14 @@ def t_comma(t: LexToken) -> LexToken:
     return t
 
 
-def t_STRING(t: LexToken) -> LexToken:
+def t_STRING(t: LexToken) -> LexToken:  # pylint: disable=C0103
     r"""\".*?\" """
     stripped = t.value[1:-1]  # strip quote
     t.value = stripped
     return t
 
 
-def t_NUMBER(t: LexToken) -> LexToken:
+def t_NUMBER(t: LexToken) -> LexToken:  # pylint: disable=C0103
     r"""-?\d+(?:\.\d+)?"""
     # arciv doesn't have any float fields; but we parse as float first for completeness
     t.value = float(t.value)
@@ -83,14 +88,14 @@ def t_NUMBER(t: LexToken) -> LexToken:
     return t
 
 
-def t_PATH(t: LexToken) -> LexToken:
+def t_PATH(t: LexToken) -> LexToken:  # pylint: disable=C0103
     r"\[\[.*?\]\]"
     stripped = t.value[2:-2]  # strip brackets
     t.value = stripped
     return t
 
 
-t_ignore = " \t"
+t_ignore = " \t"  # pylint: disable=C0103
 
 
 # Define a rule so we can track line numbers
@@ -101,6 +106,9 @@ def t_newline(t: LexToken) -> None:
 
 # Error handling rule
 def t_error(t: LexToken) -> None:
+    """
+    Fallback for when a token is read that fails to match the list of defined tokens
+    """
     raise LexError(
         f"Scanning error. Illegal character '{t.value[0]}' found at L{t.lineno}:{t.lexpos}",
         t.value[0],
@@ -109,4 +117,7 @@ def t_error(t: LexToken) -> None:
 
 # Build the lexer
 def build(**kwargs: Any) -> Lexer:
+    """
+    Build the lexer object, using the schema provided in this file
+    """
     return lex.lex(**kwargs)

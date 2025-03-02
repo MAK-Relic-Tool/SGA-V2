@@ -11,26 +11,26 @@ logger = logging.getLogger(__name__)
 
 
 def load(f: TextIO) -> Arciv:
-    logger.debug(f"Loading Arciv File: {f}")
+    logger.debug("Loading Arciv File: {0}", f)
     data = parse(f)
     return Arciv.from_parser(data)
 
 
 def loads(f: str) -> Arciv:
-    logger.debug(f"Loading Arciv string: `{f}`")
+    logger.debug("Loading Arciv string: `{0}`", f)
     data = parses(f)
     return Arciv.from_parser(data)
 
 
 def parse(f: TextIO) -> Dict[str, Any]:
-    logger.debug(f"Parsing Arciv File: `{f}`")
+    logger.debug("Parsing Arciv File: `{0}`", f)
     lexer = build_lexer()
     parser = build_parser()
     return parser.parse(f.read(), lexer=lexer)  # type: ignore
 
 
 def parses(f: str) -> Dict[str, Any]:
-    logger.debug(f"Parsing Arciv string: `{f}`")
+    logger.debug("Parsing Arciv string: `{0}`", f)
     with StringIO(f) as h:
         return parse(h)
 

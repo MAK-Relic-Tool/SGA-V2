@@ -54,14 +54,10 @@ from relic.sga.core.serialization import (
 logger = logging.getLogger(__name__)
 
 
-def _repr_name(t: Any) -> str:
-    klass = t.__class__
-    module = klass.__module__
-    return ".".join([module, klass.__qualname__])
-
-
 def _repr_obj(self: Any, *args: str, name: Optional[str] = None, **kwargs: Any) -> str:
-    klass_name = _repr_name(self)
+    klass = self.__class__
+    module = klass.__module__
+    klass_name = ".".join([module, klass.__qualname__])
     for arg in args:
         kwargs[arg] = getattr(self, arg)
     kwarg_line = ", ".join(f"{k}='{v}'" for k, v in kwargs.items())

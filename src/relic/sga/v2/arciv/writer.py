@@ -51,10 +51,10 @@ class ArcivWriter:
     @contextmanager
     def _enter_indent(self) -> Iterator[None]:
         self._indent_level += 1
-        logger.debug(f"Entering Indent `{self._indent_level}`")
+        logger.debug("Entering Indent `{0}`", self._indent_level)
         yield None
         self._indent_level -= 1
-        logger.debug(f"Exiting Indent `{self._indent_level}`")
+        logger.debug("Exiting Indent `{0}`", self._indent_level)
 
     def _formatted(
         self,
@@ -64,7 +64,12 @@ class ArcivWriter:
         no_indent: bool = False,
     ) -> Iterable[str]:
         logger.debug(
-            f"Formatting `{values}` (newline:{newline}, comma:{comma}, no_indent:{no_indent}, _indent_level:{self._indent_level})"
+            "Formatting `{0}` (newline:{1}, comma:{2}, no_indent:{3}, _indent_level:{4})",
+            values,
+            newline,
+            comma,
+            no_indent,
+            self._indent_level,
         )
 
         if (
@@ -223,18 +228,18 @@ class ArcivWriter:
             yield from self._format_key_value(key, value)
 
     def write(self, data: Any) -> str:
-        logger.debug(f"Writing Arciv data {data} to string")
+        logger.debug("Writing Arciv data {0} to string", data)
         with StringIO() as fp:
             self.writef(fp, data)
             return fp.getvalue()
 
     def writef(self, fp: TextIO, data: Any) -> None:
-        logger.debug(f"Writing Arciv data {data} to file {fp}")
+        logger.debug("Writing Arciv data {0} to file {1}", data, fp)
         for token in self.tokens(data):
             fp.write(token)
 
 
-class ArcivEncoder:
+class ArcivEncoder:  # pylint: disable=R0903
     def default(
         self, obj: Any
     ) -> Union[str, PathLike[str], int, float, Dict[str, Any], List[Any]]:
@@ -251,7 +256,7 @@ class ArcivEncoder:
         )
 
 
-class _ArcivSpecialEncodable:
+class _ArcivSpecialEncodable:  # pylint: disable=R0903
     """Marks the class as needing special handling when automatically being encoded."""
 
     def to_parser_dict(self) -> Dict[str, Any]:

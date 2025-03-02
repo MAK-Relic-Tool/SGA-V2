@@ -44,7 +44,7 @@ class EssenceFSV2Opener(EssenceFsOpenerPlugin[EssenceFSV2]):
     def __repr__(self) -> str:
         raise NotImplementedError
 
-    def open_fs(
+    def open_fs(  # pylint: disable=R0917
         self,
         fs_url: str,
         parse_result: ParseResult,

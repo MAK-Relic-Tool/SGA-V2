@@ -502,8 +502,7 @@ def _repr_obj(self: Any, *args: str, name: Optional[str] = None, **kwargs: Any) 
         kwarg_line = f" ({kwarg_line})"  # space at start to avoid if below
     if name is None:
         return f"<{klass_name}{kwarg_line}>"
-    else:
-        return f"<{klass_name} '{name}'{kwarg_line}>"
+    return f"<{klass_name} '{name}'{kwarg_line}>"
 
 
 class _SgaFsFileV2:
@@ -1417,7 +1416,7 @@ class _V2TocDisassembler:
             if root_folder is not None:
                 toc_drive.root_folder = root_folder
 
-    def write_file(
+    def write_file(  # pylint:disable = R0917
         self,
         name_offset: Optional[int] = None,
         storage_type: Optional[StorageType] = None,
@@ -1435,7 +1434,7 @@ class _V2TocDisassembler:
         _TOC_FILE = _TOC_FILE_HANDLERS[self._game_format]
         handle = self.file_block
 
-        window_size = _TOC_FILE._SIZE
+        window_size = _TOC_FILE._SIZE  # pylint:disable = W0212
         if window_start is None:
             handle.seek(0, os.SEEK_END)
             window_start = handle.tell()
@@ -1459,7 +1458,7 @@ class _V2TocDisassembler:
 
             return window_start
 
-    def write_folder(
+    def write_folder(  # pylint:disable = R0913
         self,
         name_offset: Optional[int] = None,
         first_folder: Optional[int] = None,
@@ -1729,7 +1728,7 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
         self._root = filesystem_root
 
     def _get_fspath(self, path: str, fs_info: Optional[Tuple[FS, str]]) -> str:
-        SEPS = [
+        seperators = [
             ("\\", r"/"),
             (r"/", "\\"),
         ]
@@ -1740,13 +1739,12 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             filesystem, root = fs_info
             path = path.replace(root, "", 1)
             invalid: str = filesystem.getmeta().get("invalid_path_chars", "")  # type: ignore
-            for sep, inv_sep in SEPS:
+            for sep, inv_sep in seperators:
                 if sep in invalid and sep in path:
                     path = path.replace(sep, inv_sep)
 
             return path
-        else:
-            return path
+        return path
 
     def write_arciv_sub_folders(
         self, folder: TocFolderItem
@@ -1819,11 +1817,11 @@ class ArcivV2TocDisassembler(_V2TocDisassembler):
             filesystem, _ = fs_info
             fs_path = self._get_fspath(path, fs_info)
             return filesystem.getinfo(fs_path, namespaces)
-        IS_DIR = os.path.isdir(path)
-        _INFO = {NS_BASIC: build_ns_basic(os.path.basename(path), is_dir=IS_DIR)}
+        is_directory = os.path.isdir(path)
+        _INFO = {NS_BASIC: build_ns_basic(os.path.basename(path), is_dir=is_directory)}
         if NS_DETAILS in namespaces:
             stat = os.stat(path)
-            if IS_DIR:
+            if is_directory:
                 rtype = ResourceType.directory
             elif os.path.isfile(path):
                 rtype = ResourceType.file
@@ -2142,7 +2140,7 @@ class _SgaV2Serializer:
     ) -> int:
         if window_start is None:
             window_start = handle.tell()
-        window_size = SgaTocHeaderV2._SIZE
+        window_size = SgaTocHeaderV2._SIZE  # pylint: disable=W0212
 
         if not update:
             buffer = b"\0" * window_size
@@ -2295,8 +2293,7 @@ class SgaFsV2Assembler:
 
             if resolver.Storage is None:
                 return default_storage_type
-            else:
-                return resolver.Storage
+            return resolver.Storage
 
         return default_storage_type
 
@@ -2434,7 +2431,10 @@ class EssenceFSV2(EssenceFS):
             handle_mode = _mode.to_platform_bin()
             if _mode.text:
                 logger.warning(
-                    f"Opening `{path!r}` with mode `{mode}` (text) is not supported, opening as `{handle_mode}` (binary)"
+                    "Opening `{0!r}` with mode `{1}` (text) is not supported, opening as `{2}` (binary)",
+                    path,
+                    mode,
+                    handle_mode,
                 )
 
             handle: Union[IO[bytes], IO[str]]
@@ -2445,7 +2445,7 @@ class EssenceFSV2(EssenceFS):
         else:
             if parent_fs is not None:
                 logger.warning(
-                    f"Parent FS is ignored when opening via a binary handle; the handle is passed in directly."
+                    "Parent FS is ignored when opening via a binary handle; the handle is passed in directly."
                 )
             handle = cast(Union[IO[bytes]], path)
         binary_handle = cast(
@@ -2475,7 +2475,6 @@ class EssenceFSV2(EssenceFS):
         """
         super().__init__()
 
-        true_handle: Optional[BinaryIO]
         owned: bool = False
 
         self._stream = stream
@@ -2521,8 +2520,8 @@ class EssenceFSV2(EssenceFS):
             return  # already in memory
 
         for drive in self._drives.values():
-            drive._unlazy()
-            drive._unlazy_children()
+            drive._unlazy()  # pylint: disable=W0212
+            drive._unlazy_children()  # pylint: disable=W0212
 
         self._lazy_file = None
         if self._stream is not None:
