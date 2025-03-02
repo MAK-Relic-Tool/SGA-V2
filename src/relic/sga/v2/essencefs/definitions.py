@@ -2613,7 +2613,7 @@ class EssenceFSV2(EssenceFS):
         raise fs.errors.ResourceNotFound(path)
 
     def getinfo(self, path: str, namespaces: Optional[Collection[str]] = None) -> Info:
-        node: Union[_SgaFSFileV2, _SgaFsFolderV2] = self._getnode(path, exists=True)  # type: ignore
+        node: Union[_SgaFsFileV2, _SgaFsFolderV2] = self._getnode(path, exists=True)  # type: ignore
         return node.getinfo(namespaces)  # type: ignore
 
     def listdir(self, path: str) -> List[str]:
@@ -2752,7 +2752,7 @@ class EssenceFSV2(EssenceFS):
             raise
 
     def setinfo(self, path: str, info: Mapping[str, Mapping[str, object]]) -> None:
-        node: Union[_SgaFSFileV2, _SgaFSFolderV2] = self._getnode(path, exists=True)  # type: ignore
+        node: Union[_SgaFsFileV2, _SgaFsFolderV2] = self._getnode(path, exists=True)  # type: ignore
         node.setinfo(info)
 
     def iterate_fs(self) -> Iterator[Tuple[str, FS]]:
