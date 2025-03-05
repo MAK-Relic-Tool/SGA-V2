@@ -26,6 +26,7 @@ from relic.core.lazyio import (
     ConstProperty,
     #    get_BinaryProxySerializer LogProperty,
 )
+from relic.sga.v2._util import _repr_obj
 from relic.core.lazyio import (
     BinaryWindow,
     ZLibFileReader,
@@ -50,20 +51,6 @@ from relic.sga.core.serialization import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-def _repr_obj(self: Any, *args: str, name: Optional[str] = None, **kwargs: Any) -> str:
-    klass = self.__class__
-    module = klass.__module__
-    klass_name = ".".join([module, klass.__qualname__])
-    for arg in args:
-        kwargs[arg] = getattr(self, arg)
-    kwarg_line = ", ".join(f"{k}='{v}'" for k, v in kwargs.items())
-    if len(kwarg_line) > 0:
-        kwarg_line = f" ({kwarg_line})"  # space at start to avoid if below
-    if name is None:
-        return f"<{klass_name}{kwarg_line}>"
-    return f"<{klass_name} '{name}'{kwarg_line}>"
 
 
 class RelicUnixTimeSerializer:
@@ -114,11 +101,11 @@ _T = TypeVar("_T")
 class LogProperty(Generic[_T]):
     def __init__(
         self,
-        property: BinaryProperty[_T] | ConstProperty[_T],
+        _property: BinaryProperty[_T] | ConstProperty[_T],
         name: str,
-        logger: logging.Logger,
+        _logger: logging.Logger,
     ):
-        self._property = property
+        self._property = _property
 
     def __get__(self, instance: Any, owner: Any) -> _T:
         return self._property.__get__(instance, owner)
@@ -136,7 +123,7 @@ class LogProperty(Generic[_T]):
 
 
 class SgaHeaderV2(SgaHeader):
-    class Meta:
+    class Meta:  # pylint: disable= R0903
         file_md5_ptr = (0, 16)
         name_ptr = (16, 128)
         toc_md5_ptr = (144, 16)
@@ -339,14 +326,16 @@ class SgaTocFileV2Dow(_SgaTocFileV2):
 
 
 # UGH; these names :yikes:
-class SgaTocFileDataHeaderV2DowProtocol(Protocol):
+class SgaTocFileDataHeaderV2DowProtocol(Protocol):  # pylint:disable= R0903
     name: str
     crc32: int
     modified: int
 
 
 @dataclass
-class MemSgaTocFileDataHeaderV2Dow(SgaTocFileDataHeaderV2DowProtocol):
+class MemSgaTocFileDataHeaderV2Dow(
+    SgaTocFileDataHeaderV2DowProtocol
+):  # pylint:disable= R0903
     name: str
     crc32: int
     modified: int
@@ -408,7 +397,8 @@ class LazySgaTocFileDataHeaderV2Dow(
     def check_header_valid(self) -> bool:
         def _warn(name: str) -> None:
             logger.warning(
-                f"Failed to parse File Data Header `{name}`, the header may be missing or invalid."
+                "Failed to parse File Data Header `{0}`, the header may be missing or invalid.",
+                name,
             )
 
         try:
@@ -461,11 +451,13 @@ class SgaTocFileDataV2:
             has_data_header and _lazy_data_header.check_header_valid()
         ):
             logger.debug(
-                f"File `{self.name}` {'has' if has_safe_data_header else 'may have'} a Data Header"
+                "File `{0}` {1} a Data Header",
+                self.name,
+                "has" if has_safe_data_header else "may have",
             )
             self._data_header = _lazy_data_header
         else:
-            logger.debug(f"File `{self.name}` is missing its Data Header")
+            logger.debug("File `{0}` is missing its Data Header", self.name)
             _name = self.name
             _data = self.data(True).read(-1)
             self._data_header = MemSgaTocFileDataHeaderV2Dow.create(_name, _data)
@@ -480,7 +472,7 @@ class SgaTocFileDataV2:
 
     def data(self, decompress: bool = True) -> BinaryIO:
         logger.debug(
-            f"Reading File Data from the Data Window (decompress={decompress})"
+            "Reading File Data from the Data Window (decompress={0})", decompress
         )
         offset = self._toc_file.data_offset
         size = self._toc_file.compressed_size
@@ -567,7 +559,7 @@ class SgaTocV2(SgaToc):
             if format_class._SIZE == file_def_size:
                 return game_format
         EXPECTED = [
-            f"'{format_class._SIZE}' ({game_format.value})"
+            f"'{format_class._SIZE}' ({game_format.value})"  # pylint: disable=W0212
             for (game_format, format_class) in GAME_FORMAT_TOC_FILE.items()
         ]  #
         raise RelicToolError(
@@ -600,7 +592,7 @@ class SgaTocV2(SgaToc):
         return self._header
 
     @property
-    def root_folders(self) -> SgaTocInfoArea[SgaTocDrive]:  # type: ignore
+    def drives(self) -> SgaTocInfoArea[SgaTocDrive]:  # type: ignore
         return self._drives  # type: ignore
 
     @property
@@ -654,7 +646,7 @@ class SgaFileV2(SgaFile):
             total_data_size += __toc_file.compressed_size
         return total_header_size + total_data_size
 
-    def __verify(
+    def __verify(  # pylint: disable=R0913,R0917
         self,
         cached: bool,
         error: bool,
@@ -682,7 +674,7 @@ class SgaFileV2(SgaFile):
         return getattr(self, cache_name)  # type: ignore
 
     def verify_file(self, cached: bool = True, error: bool = False) -> bool:
-        logger.debug(f"Verifying `{self._meta.name}` Header MD5")
+        logger.debug("Verifying `{0}` Header MD5", self._meta.name)
         NAME = "__verified_file"
         return self.__verify(
             cached=cached,
@@ -694,7 +686,7 @@ class SgaFileV2(SgaFile):
         )
 
     def verify_header(self, cached: bool = True, error: bool = False) -> bool:
-        logger.debug(f"Verifying `{self._meta.name}` Header MD5")
+        logger.debug("Verifying `{0}` Header MD5", self._meta.name)
         NAME = "__verified_header"
         return self.__verify(
             cached=cached,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import os
 from contextlib import contextmanager
 from dataclasses import dataclass
 from io import StringIO
@@ -9,6 +10,7 @@ from os import PathLike
 from typing import Optional, Iterable, Union, List, Dict, Any, TextIO, Iterator
 
 from relic.core.errors import RelicToolError
+from relic.sga.v2.arciv.errors import ArcivWriterError, ArcivEncoderError
 
 logger = getLogger(__name__)
 
@@ -32,12 +34,6 @@ class ArcivWriterSettings:
         return self.newline is not None and len(self.newline) > 0
 
 
-class ArcivWriterError(RelicToolError): ...
-
-
-class ArcivEncoderError(RelicToolError): ...
-
-
 class ArcivWriter:
     def __init__(
         self,
@@ -50,6 +46,9 @@ class ArcivWriter:
 
     @contextmanager
     def _enter_indent(self) -> Iterator[None]:
+        """
+        A context manager that manages the indent level of the writer
+        """
         self._indent_level += 1
         logger.debug("Entering Indent `{0}`", self._indent_level)
         yield None
@@ -63,6 +62,9 @@ class ArcivWriter:
         comma: bool = False,
         no_indent: bool = False,
     ) -> Iterable[str]:
+        """
+        Returns a list of formatted tokens
+        """
         logger.debug(
             "Formatting `{0}` (newline:{1}, comma:{2}, no_indent:{3}, _indent_level:{4})",
             values,
@@ -92,6 +94,9 @@ class ArcivWriter:
     def _format_str(
         self, value: str, *, in_collection: bool = False, in_assignment: bool = False
     ) -> Iterable[str]:
+        """
+        Formats a number-like as a string (formatted as an string) in the 'arciv' specification
+        """
         logger.debug(
             "Formatting String `{0}` (in_collection:{1}, in_assignment:{2})",
             value,
@@ -112,6 +117,9 @@ class ArcivWriter:
         in_collection: bool = False,
         in_assignment: bool = False,
     ) -> Iterable[str]:
+        """
+        Formats a number-like as a string (formatted as an int object) in the 'arciv' specification
+        """
         logger.debug(
             "Formatting Number `{0}` (in_collection:{1}, in_assignment:{2})",
             value,
@@ -132,6 +140,9 @@ class ArcivWriter:
         in_collection: bool = False,
         in_assignment: bool = False,
     ) -> Iterable[str]:
+        """
+        Formats a string-like as a string (formatted as a path object) in the 'arciv' specification
+        """
         logger.debug(
             "Formatting Path `{0}` (in_collection:{1}, in_assignment:{2})",
             value,
@@ -139,7 +150,7 @@ class ArcivWriter:
             in_assignment,
         )
         yield from self._formatted(
-            f"[[{value if not hasattr(value, '__fspath__') else value.__fspath__()}]]",
+            f"[[{os.fspath(value)}]]",
             comma=in_collection,
             newline=in_assignment,
             no_indent=in_assignment,
@@ -152,6 +163,9 @@ class ArcivWriter:
         in_collection: bool = False,
         in_assignment: bool = False,
     ) -> Iterable[str]:
+        """
+        Formats a collection as a string in the 'arciv' specification
+        """
         logger.debug(
             "Formatting Collection `{0}` (in_collection:{1}, in_assignment:{2})",
             encoded,
@@ -191,6 +205,9 @@ class ArcivWriter:
         in_assignment: bool = False,
         encode: bool = True,
     ) -> Iterable[str]:
+        """
+        Formats an arbitrary value as a string in the 'arciv' specification
+        """
         logger.debug(
             "Formatting Item `{0}` (in_collection:{1}, in_assignment:{2}, encode:{3})",
             value,
@@ -223,6 +240,9 @@ class ArcivWriter:
     def _format_key_value(
         self, key: str, value: Any, *, in_collection: bool = False
     ) -> Iterable[str]:
+        """
+        Formats a key-value pair into a string in the 'arciv' specification
+        """
         logger.debug(
             "Formatting Key/Value `{0}`/`{1}` (in_collection:{2})",
             key,
@@ -237,6 +257,9 @@ class ArcivWriter:
         )
 
     def tokens(self, data: Any) -> Iterable[str]:
+        """
+        Converts the given data into string tokens that can be written to a file
+        """
         logger.debug("Iterating Tokens on {0}", data)
         encoded = self._encoder.default(data)
         if not isinstance(encoded, dict):
@@ -247,21 +270,34 @@ class ArcivWriter:
             yield from self._format_key_value(key, value)
 
     def write(self, data: Any) -> str:
+        """
+        Writes the data to a string, using the 'arciv' specification.
+        """
         logger.debug("Writing Arciv data {0} to string", data)
         with StringIO() as fp:
             self.writef(fp, data)
             return fp.getvalue()
 
     def writef(self, fp: TextIO, data: Any) -> None:
+        """
+        Writes the data to the file handle, using the 'arciv' specification.
+        """
         logger.debug("Writing Arciv data {0} to file {1}", data, fp)
         for token in self.tokens(data):
             fp.write(token)
 
 
 class ArcivEncoder:  # pylint: disable=R0903
+    """
+    An object which defines the behavior for converting objects to an encodable type
+    """
+
     def default(
         self, obj: Any
     ) -> Union[str, PathLike[str], int, float, Dict[str, Any], List[Any]]:
+        """
+        Converts the given object to an encodable type
+        """
         if isinstance(obj, _ArcivSpecialEncodable):
             # Special case to handle the _Arciv Dataclass and its parts
             #   These classes may not map 1-1 to the file; such as the root; which has an implied ARCHIVE = field
@@ -279,4 +315,7 @@ class _ArcivSpecialEncodable:  # pylint: disable=R0903
     """Marks the class as needing special handling when automatically being encoded."""
 
     def to_parser_dict(self) -> Dict[str, Any]:
+        """
+        Performs the manual conversion of this object to an Arciv Encodable dictionary
+        """
         raise NotImplementedError

@@ -51,6 +51,7 @@ from relic.sga.core.serialization import (
     SgaTocDrive,
     VersionSerializer,
 )
+from relic.sga.v2._util import _repr_name
 
 from relic.sga.v2.arciv.definitions import (
     Arciv,
@@ -263,24 +264,6 @@ class SgaPathResolver:
     def dirname(cls, path: str) -> str:
         logger.debug("Getting dirname of `{0}`", path)
         return cls.split(path)[0]
-
-
-def _repr_name(t: Any) -> str:
-    klass = t.__class__
-    module = klass.__module__
-    return ".".join([module, klass.__qualname__])
-
-
-def _repr_obj(self: Any, *args: str, name: Optional[str] = None, **kwargs: Any) -> str:
-    klass_name = _repr_name(self)
-    for arg in args:
-        kwargs[arg] = getattr(self, arg)
-    kwarg_line = ", ".join(f"{k}='{v}'" for k, v in kwargs.items())
-    if len(kwarg_line) > 0:
-        kwarg_line = f" ({kwarg_line})"  # space at start to avoid if below
-    if name is None:
-        return f"<{klass_name}{kwarg_line}>"
-    return f"<{klass_name} '{name}'{kwarg_line}>"
 
 
 class _SgaFsFileV2:
@@ -1245,7 +1228,7 @@ class _V2TocDisassembler:  # pylint:disable=r0902
 
             return window_start
 
-    def write_folder(  # pylint: disable= R0913, RO917
+    def write_folder(
         self,
         name_offset: Optional[int] = None,
         first_folder: Optional[int] = None,
@@ -1254,7 +1237,7 @@ class _V2TocDisassembler:  # pylint:disable=r0902
         last_file: Optional[int] = None,
         *,
         window_start: Optional[int] = None,
-    ) -> int:
+    ) -> int:  # pylint: disable= R0913,R0917
         handle = self.folder_block
 
         window_size = SgaTocFolderV2._SIZE  # pylint:disable=w0212
@@ -2107,7 +2090,7 @@ class SgaFsV2Assembler:
     ) -> Tuple[EssenceFSV2, Iterable[str]]:  # pylint: disable=r0914
         sga = EssenceFSV2(
             game=SgaV2GameFormat.DawnOfWar, name=manifest.ArchiveHeader.ArchiveName
-        )  # TODO does IC support modding?
+        )
         file_list = []
         for toc in manifest.TOCList:
             with sga.create_drive(toc.TOCHeader.Name, toc.TOCHeader.Alias) as drive:
@@ -2203,6 +2186,9 @@ class EssenceFSV2(EssenceFS):  # pylint: disable=r0902
         parent_fs: Optional[FS] = None,
         mode: str = "r",
     ) -> EssenceFSV2:
+        """
+        Open an SGA
+        """
         if isinstance(path, (str, PathLike, bytes)):
             _mode = Mode(mode)
 
@@ -2215,9 +2201,9 @@ class EssenceFSV2(EssenceFS):  # pylint: disable=r0902
                     handle_mode,
                 )
 
-            handle: Union[IO[bytes], IO[str]]
+            handle: IO[bytes]
             if parent_fs is None:
-                handle = open(path, handle_mode)
+                handle = open(path, handle_mode, encoding=None)  # pylint: disable=W1514
             else:
                 handle = parent_fs.open(str(path), handle_mode)
         else:

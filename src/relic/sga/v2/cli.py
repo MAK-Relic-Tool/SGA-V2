@@ -98,7 +98,7 @@ class RelicSgaPackV2Cli(CliPlugin):
         # Execute Command
         logger.info("SGA Packer")
         logger.info(f"\tReading Manifest `{manifest_path}`")
-        with open(manifest_path, "r", encoding=None) as manifest_handle:
+        with open(manifest_path, "r", encoding="utf-8") as manifest_handle:
             if manifest_is_json:
                 manifest_json: Dict[str, Any] = json.load(manifest_handle)
                 manifest = Arciv.from_parser(manifest_json)
@@ -119,7 +119,7 @@ class RelicSgaPackV2Cli(CliPlugin):
             SgaFsV2Packer.pack(manifest, out_handle, safe_mode=True)
         logger.info("\t\tPacked")
         logger.info("\tDone!")
-        return None
+        return 0
 
 
 class RelicSgaRepackV2Cli(CliPlugin):
