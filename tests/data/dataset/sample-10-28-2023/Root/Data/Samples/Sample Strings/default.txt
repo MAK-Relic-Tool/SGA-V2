@@ -1,0 +1,1 @@
+This file should be stored as a zlib-compressed block with storage_type STREAM assigned automatically without being specified in the TOC's storage settings.

@@ -1,0 +1,99 @@
+Archive =
+{
+	ArchiveHeader =
+	{
+		ArchiveName = "example-10-26-2023",
+	},
+	TOCList =
+	{
+
+		{
+			RootFolder =
+			{
+				Files =
+				{
+				},
+				FolderInfo =
+				{
+					folder = "",
+					path = [[<cwd>\Root\]],
+				},
+				Folders =
+				{
+
+					{
+						Files =
+						{
+						},
+						FolderInfo =
+						{
+							folder = "Samples",
+							path = [[<cwd>\Root\Samples\]],
+						},
+						Folders =
+						{
+
+							{
+								Files =
+								{
+
+									{
+										File = "store.txt",
+										Path = [[<cwd>\Root\Samples\Sample Strings\store.txt]],
+										Size = 56,
+										Store = 0,
+									},
+
+									{
+										File = "buffer.txt",
+										Path = [[<cwd>\Root\Samples\Sample Strings\buffer.txt]],
+										Size = 68,
+										Store = 2,
+									},
+
+									{
+										File = "stream.txt",
+										Path = [[<cwd>\Root\Samples\Sample Strings\stream.txt]],
+										Size = 68,
+										Store = 1,
+									},
+
+									{
+										File = "auto.txt",
+										Path = [[<cwd>\Root\Samples\Sample Strings\auto.txt]],
+										Size = 103,
+										Store = -1,
+									},
+								},
+								FolderInfo =
+								{
+									folder = "Sample Strings",
+									path = [[<cwd>\Root\Samples\Sample Strings\]],
+								},
+								Folders =
+								{
+								},
+							},
+						},
+					},
+				},
+			},
+			TOCHeader =
+			{
+				Alias = "data",
+				Name = "testdata",
+				RootPath = [[<cwd>\Root\]],
+				Storage =
+				{
+
+					{
+						MaxSize = -1,
+						MinSize = -1,
+						Storage = 0,
+						Wildcard = "*.*",
+					},
+				},
+			},
+		},
+	},
+}
