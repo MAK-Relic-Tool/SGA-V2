@@ -2365,7 +2365,7 @@ class EssenceFSV2(EssenceFS):  # pylint: disable=r0902
             )
         drives = [
             SgaFsDriveV2(lazy=SgaFsDriveV2Lazy(drive_info, folders))
-            for drive_info in toc.root_folders
+            for drive_info in toc.drives
         ]
         for drive in drives:
             self.add_drive(drive)
