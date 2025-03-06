@@ -1,6 +1,6 @@
 # Relic Tool - SGA - V2
 [![PyPI](https://img.shields.io/pypi/v/relic-tool-sga-v2)](https://pypi.org/project/relic-tool-sga-v2/)
-[![PyPI - Python Version](https://img.shields.io/pypi/v/relic-tool-sga-v2)](https://www.python.org/downloads/)
+[![PyPI - Python Version](https://img.shields.io/pypi/pyversions/relic-tool-sga-v2)](https://www.python.org/downloads/)
 [![PyPI - License](https://img.shields.io/pypi/l/relic-tool-sga-v2)](https://github.com/MAK-Relic-Tool/Relic-Tool-SGA-V2/blob/main/LICENSE.txt)
 [![linting: pylint](https://img.shields.io/badge/linting-pylint-yellowgreen)](https://github.com/PyCQA/pylint)
 [![Checked with mypy](http://www.mypy-lang.org/static/mypy_badge.svg)](http://mypy-lang.org/)
@@ -18,6 +18,7 @@ A non-exhaustive list of Games that use Relic's SGA V2
 - Dawn Of War: Winter Assault
 - Dawn Of War: Dark Crusade
 - Dawn Of War: Soulstorm
+- Impossible Creatures
 
 ## Installation (Pip)
 ### Installing from PyPI (Recommended)
@@ -31,26 +32,19 @@ pip install git+https://github.com/MAK-Relic-Tool/SGA-V2
 ```
 ## CLI Commands
 ### Unpacking Archives
-See https://github.com/MAK-Relic-Tool/SGA-Core
-
 This plugin allows SGA-Core to properly unpack SGA-V2 files.
-
-Please refer to the SGA-Core documentation for information on the unpack command
-
 
 ### Packing Archives
 Converts a `.arciv`-like file into a `.sga` archive file.
 ```
-relic sga pack v2 manifest [out_path]
+relic sga v2 pack manifest [out_path]
 ```
 ```
-usage: relic sga pack v2 [-h] [--log [LOG]] [--loglevel [{none,debug,info,warning,error,critical}]] [--logconfig [LOGCONFIG]] manifest [out_path]
+usage: relic sga v2 pack [-h] [--log [LOG]] [--loglevel [{none,debug,info,warning,error,critical}]] [--logconfig [LOGCONFIG]] manifest [out_path]
 
 positional arguments:
-  manifest              An .arciv file (or a suitable .json matching the .arciv tree). If the file extension is not '.json' or '.arciv', '.arciv'
-                        is assumed
-  out_path              The path to the output SGA file. If the path is a directory, the SGA will be placed in the directory using the name
-                        specified in the manifest. If not specified, defaults to the manifest's directory.
+  manifest              An .arciv file (or a suitable .json matching the .arciv tree). If the file extension is not '.json' or '.arciv', '.arciv' is assumed
+  out_path              The path to the output SGA file. If the path is a directory, the SGA will be placed in the directory using the name specified in the manifest. If not specified, defaults to the manifest's directory.
 
 options:
   -h, --help            show this help message and exit
@@ -60,25 +54,24 @@ options:
   --logconfig [LOGCONFIG]
                         Path to a logging config file.
 ```
-### Re-Packing Archives
-Unpacks and repacks an `.sga` archive.
-
-Primarily useful for testing, or adding missing file headers.
-
-If the official archive viewer fails to find/verify crc32 checksums, this may help.
-
+### Unpacking Archives
+Unpacks an `.sga` archive into a file tree.
 ```
-relic sga repack v2 in_sga [out_sga]
+relic sga unpack src_sga out_dir
 ```
 ```
-usage: relic sga repack v2 [-h] [--log [LOG]] [--loglevel [{none,debug,info,warning,error,critical}]] [--logconfig [LOGCONFIG]] in_sga [out_sga]
+usage: relic sga unpack [-h] [-m | -i] [--log [LOG]] [--loglevel [{none,debug,info,warning,error,critical}]] [--logconfig [LOGCONFIG]] src_sga out_dir
+
+Unpack an SGA archive to the filesystem. If only one root is present in the SGA, '--merge' is implied. If multiple roots are in the SGA '--isolate' is implied. Manually specify the flags to override this behaviour.
 
 positional arguments:
-  in_sga                Input SGA File
-  out_sga               Output SGA File
+  src_sga               Source SGA File
+  out_dir               Output Directory
 
 options:
   -h, --help            show this help message and exit
+  -m, --merge           SGA roots will always write to the same folder; specified by out_dir
+  -i, --isolate         SGA roots will always write to separate folders, one per alias; located within out_dir
   --log [LOG]           Path to the log file, if one is generated
   --loglevel [{none,debug,info,warning,error,critical}]
                         Verbosity of the log. Defaults to `info`
