@@ -4,15 +4,15 @@ on:
   workflow_dispatch:
 
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'src/relic/**'
-      - '.github/workflows/black.yml'
+    - src/relic/**
+    - .github/workflows/black.yml
   pull_request:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - 'src/relic/**'
-      - '.github/workflows/black.yml'
+    - src/relic/**
+    - .github/workflows/black.yml
 
 jobs:
   black:

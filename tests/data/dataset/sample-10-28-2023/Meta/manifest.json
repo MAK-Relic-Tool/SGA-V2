@@ -1,0 +1,52 @@
+{
+  "files": {
+    "Attrib/MyAttrib/LoremIpsum.txt": {
+      "crc": 832543510,
+      "modified": 1707377389
+    },
+    "Attrib/MyAttrib/also lorem ipsum.txt": {
+      "crc": 3170888021,
+      "modified": 1707377389
+    },
+    "Attrib/MyAttrib/more ipsum.txt": {
+      "crc": 3058071107,
+      "modified": 1707788116
+    },
+    "Data/Samples/Sample Images/smiley.bmp": {
+      "crc": 3778734,
+      "modified": 1707377318
+    },
+    "Data/Samples/Sample Images/smiley.jpg": {
+      "crc": 4263308829,
+      "modified": 1707377318
+    },
+    "Data/Samples/Sample Images/smiley.png": {
+      "crc": 263829357,
+      "modified": 1707377318
+    },
+    "Data/Samples/Sample Images/smiley.tga": {
+      "crc": 3336569661,
+      "modified": 1707377318
+    },
+    "Data/Samples/Sample Images/smiley.tif": {
+      "crc": 3944370938,
+      "modified": 1707377318
+    },
+    "Data/Samples/Sample Strings/auto.txt": {
+      "crc": 3049386497,
+      "modified": 1707377389
+    },
+    "Data/Samples/Sample Strings/buffer.txt": {
+      "crc": 4114831776,
+      "modified": 1707377389
+    },
+    "Data/Samples/Sample Strings/store.txt": {
+      "crc": 390558409,
+      "modified": 1707377389
+    },
+    "Data/Samples/Sample Strings/stream.txt": {
+      "crc": 4114831776,
+      "modified": 1707377389
+    }
+  }
+}

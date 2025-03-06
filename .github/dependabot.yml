@@ -2,13 +2,13 @@ version: 2
 updates:
 
   # Maintain dependencies for GitHub Actions
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "monthly"
-      
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: monthly
+
   # Maintain dependencies for PIP
-  - package-ecosystem: "pip"
-    directory: "/"
-    schedule:
-      interval: "monthly"
+- package-ecosystem: pip
+  directory: /
+  schedule:
+    interval: monthly

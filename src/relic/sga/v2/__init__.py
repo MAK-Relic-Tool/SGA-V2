@@ -1,15 +1,15 @@
-"""
-Relic's V2.0 Specification for SGA files.
-"""
+"""Relic's V2.0 Specification for SGA files."""
+
 from relic.sga.v2.definitions import (
     version,
 )
 
-from relic.sga.v2.serialization import essence_fs_serializer as EssenceFSHandler
+from relic.sga.v2.essencefs import EssenceFSV2Opener, EssenceFSV2
 
-__version__ = "1.1.3"
+__version__ = "2.0.0"
 
 __all__ = [
-    "EssenceFSHandler",
+    "EssenceFSV2Opener",
+    "EssenceFSV2",
     "version",
 ]

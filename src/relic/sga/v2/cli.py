@@ -1,35 +1,33 @@
 import json
+import logging
 import os
-import typing
 from argparse import ArgumentParser, Namespace
+from os.path import splitext
 from pathlib import Path
 from typing import Optional, Dict, Any
 
-import fs
-from relic.core.cli import CliPlugin, _SubParsersAction
-from relic.sga.core.cli import _get_dir_type_validator, _get_file_type_validator
-from relic.sga.core.definitions import StorageType
-from relic.sga.core.filesystem import EssenceFS
+from relic.core.cli import CliPlugin, _SubParsersAction, RelicArgParser, CliPluginGroup
+from relic.core.errors import RelicToolError
+from relic.sga.core.cli import _get_file_type_validator
 
-from relic.sga.v2.serialization import essence_fs_serializer as v2_serializer
+from relic.sga.v2 import arciv
+from relic.sga.v2.arciv import Arciv
+from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
+from relic.sga.v2.serialization import SgaV2GameFormat
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
 
-def _resolve_storage_type(s: Optional[str]) -> StorageType:
-    _HELPER = {
-        "STORE": StorageType.STORE,
-        "BUFFER": StorageType.BUFFER_COMPRESS,
-        "STREAM": StorageType.STREAM_COMPRESS,
-    }
-    if s is None:
-        return StorageType.STORE
+class RelicSgaV2Cli(CliPluginGroup):
+    GROUP = "relic.cli.sga.v2"
 
-    s = s.upper()
-    if s in _HELPER:
-        return _HELPER[s]
-    else:
-        return StorageType[s]
+    def _create_parser(
+        self, command_group: Optional[_SubParsersAction] = None
+    ) -> ArgumentParser:
+        name = "v2"
+        if command_group is None:
+            return RelicArgParser(name)
+        return command_group.add_parser(name)
 
 
 class RelicSgaPackV2Cli(CliPlugin):
@@ -38,123 +36,90 @@ class RelicSgaPackV2Cli(CliPlugin):
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
-            parser = ArgumentParser("v2")
+            parser = RelicArgParser("pack")
         else:
-            parser = command_group.add_parser("v2")
+            parser = command_group.add_parser("pack")
 
         parser.add_argument(
-            "src_dir",
-            type=_get_dir_type_validator(exists=True),
-            help="Source Directory",
-        )
-        parser.add_argument(
-            "out_sga",
-            type=_get_file_type_validator(exists=False),
-            help="Output SGA File",
-        )
-        parser.add_argument(
-            "config_file",
+            "manifest",
             type=_get_file_type_validator(exists=True),
-            help="Config .json file",
+            help="An .arciv file (or a suitable .json matching the .arciv tree)."
+            " If the file extension is not '.json' or '.arciv', '.arciv' is assumed",
         )
-
+        parser.add_argument(
+            "out_path",
+            type=str,
+            help="The path to the output SGA file."
+            " If the path is a directory, the SGA will be placed in the directory using the name specified in the manifest."
+            " If not specified, defaults to the manifest's directory.",
+            # required=False,
+            nargs="?",
+            default=None,
+        )
         return parser
 
-    def command(self, ns: Namespace) -> Optional[int]:
+    def command(self, ns: Namespace, *, logger: logging.Logger) -> Optional[int]:
         # Extract Args
-        working_dir: str = ns.src_dir
-        outfile: str = ns.out_sga
-        config_file: str = ns.config_file
-        with open(config_file) as json_h:
-            config: Dict[str, Any] = json.load(json_h)
+        manifest_path: str = ns.manifest
+        out_path: str = ns.out_path
+        file_name: str = None  # type: ignore
+
+        manifest_is_json = splitext(manifest_path)[1].lower() == ".json"
+
+        def _check_parts(_path: str) -> bool:
+            if not _path:  # If empty, assume we're done
+                return True
+
+            d, _ = os.path.split(_path)
+
+            if os.path.exists(d):
+                return not os.path.isfile(d)
+            if (
+                _path == d
+            ):  # If, somehow, we try to recurse into ourselves, assume we're done
+                return True
+            return _check_parts(d)
+
+        if out_path is None:
+            out_path = os.path.dirname(manifest_path)
+        elif os.path.exists(out_path):
+            if os.path.isdir(out_path):
+                ...
+                # Do nothing to out path
+            else:
+                out_path, file_name = os.path.split(out_path)
+        elif not _check_parts(out_path):
+            raise RelicToolError(
+                f"'{out_path}' is not a valid path; it treats a file as a directory!"
+            )
+        else:
+            out_path, file_name = os.path.split(out_path)
 
         # Execute Command
-        print(f"Packing `{outfile}`")
+        logger.info("SGA Packer")
+        logger.info(f"\tReading Manifest `{manifest_path}`")
+        with open(manifest_path, "r", encoding="utf-8") as manifest_handle:
+            if manifest_is_json:
+                manifest_json: Dict[str, Any] = json.load(manifest_handle)
+                manifest = Arciv.from_parser(manifest_json)
+            else:
+                manifest = arciv.load(manifest_handle)
+        logger.info("\t\tLoaded")
 
-        # Create 'SGA'
-        sga = EssenceFS()
-        archive_name = os.path.basename(outfile)
-        sga.setmeta(
-            {
-                "name": archive_name,  # Specify name of archive
-                "header_md5": "0"
-                * 16,  # Must be present due to a bug, recalculated when packed
-                "file_md5": "0"
-                * 16,  # Must be present due to a bug, recalculated when packed
-            },
-            "essence",
-        )
-
-        # Walk Drives
-        for alias, drive in config.items():
-            name = drive["name"]
-
-            print(f"\tPacking Drive `{name}` w/ alias `{alias}`")
-            sga_drive = None  # sga.create_drive(alias)
-
-            # CWD for drive operations
-            drive_cwd = os.path.join(working_dir, drive.get("path", ""))
-
-            # Try to pack files
-            print(f"\tScanning files in `{drive_cwd}`")
-            frontier = set()
-            _R = Path(drive_cwd)
-
-            # Run matchers
-            for solver in drive["solvers"]:
-                # Determine storage type
-                storage = _resolve_storage_type(solver.get("storage"))
-                # Find matching files
-                for path in _R.rglob(solver["match"]):
-                    if not path.is_file():  # Edge case handling
-                        continue
-                    # File Info ~ Name & Size
-                    full_path = str(path)
-                    if full_path in frontier:
-                        continue
-                    path_in_sga = os.path.relpath(full_path, drive_cwd)
-                    size = os.stat(full_path).st_size
-
-                    # Dumb way of supporting query
-                    query = solver.get("query")
-                    if query is None or len(query) == 0:
-                        ...  # do nothing
-                    else:
-                        result = eval(query, {"size": size})
-                        if not result:
-                            continue  # Query Failure
-
-                    # match found, copy file to FS
-                    # EssenceFS is unfortunately,
-                    print(
-                        f"\t\tPacking File `{os.path.relpath(full_path, drive_cwd)}` w/ `{storage.name}`"
-                    )
-                    frontier.add(full_path)
-                    if (
-                        sga_drive is None
-                    ):  # Lazily create drive, to avoid empty drives from being created
-                        sga_drive = sga.create_drive(alias, name)
-
-                    with open(full_path, "rb") as unpacked_file:
-                        parent, file = os.path.split(path_in_sga)
-                        with sga_drive.makedirs(parent, recreate=True) as folder:
-                            with folder.openbin(file, "w") as packed_file:
-                                while True:
-                                    buffer = unpacked_file.read(_CHUNK_SIZE)
-                                    if len(buffer) == 0:
-                                        break
-                                    packed_file.write(buffer)
-                        sga_drive.setinfo(
-                            path_in_sga, {"essence": {"storage_type": storage}}
-                        )
-
-        print(f"Writing `{outfile}` to disk")
-        # Write to binary file:
-        with open(outfile, "wb") as sga_file:
-            v2_serializer.write(sga_file, sga)
-        print(f"\tDone!")
-
-        return None
+        # Resolve name when out_path was passed in as a directory
+        if file_name is None:
+            file_name = manifest.ArchiveHeader.ArchiveName + ".sga"
+        # Create parent directories
+        if out_path != "":  # Local path will lack out_path
+            os.makedirs(out_path, exist_ok=True)
+        # Create full path
+        full_out_path = os.path.join(out_path, file_name)
+        logger.info(f"\tPacking SGA `{full_out_path}`")
+        with open(full_out_path, "wb") as out_handle:
+            SgaFsV2Packer.pack(manifest, out_handle, safe_mode=True)
+        logger.info("\t\tPacked")
+        logger.info("\tDone!")
+        return 0
 
 
 class RelicSgaRepackV2Cli(CliPlugin):
@@ -163,9 +128,9 @@ class RelicSgaRepackV2Cli(CliPlugin):
     ) -> ArgumentParser:
         parser: ArgumentParser
         if command_group is None:
-            parser = ArgumentParser("v2")
+            parser = ArgumentParser("repack")
         else:
-            parser = command_group.add_parser("v2")
+            parser = command_group.add_parser("repack")
 
         parser.add_argument(
             "in_sga", type=_get_file_type_validator(exists=True), help="Input SGA File"
@@ -180,7 +145,7 @@ class RelicSgaRepackV2Cli(CliPlugin):
 
         return parser
 
-    def command(self, ns: Namespace) -> Optional[int]:
+    def command(self, ns: Namespace, *, logger: logging.Logger) -> Optional[int]:
         # Extract Args
         in_sga: str = ns.in_sga
         out_sga: str = ns.out_sga
@@ -188,25 +153,33 @@ class RelicSgaRepackV2Cli(CliPlugin):
         # Execute Command
 
         if out_sga is None:
-            out_sga = in_sga
-            print(f"Re-Packing `{in_sga}`")
+            logger.info(f"Re-Packing `{in_sga}`")
         else:
-            print(f"Re-Packing `{in_sga}` as `{out_sga}`")
+            logger.info(f"Re-Packing `{in_sga}` as `{out_sga}`")
+
         # Create 'SGA'
-        print(f"\tReading `{in_sga}`")
-        with fs.open_fs(f"sga://{in_sga}") as sga:
-            sga = typing.cast(EssenceFS, sga)  # mypy hack
+        logger.info(f"\tReading `{in_sga}`")
+        if "Dawn of War" in in_sga:
+            game_format = SgaV2GameFormat.DawnOfWar
+        elif "Impossible Creatures" in in_sga:
+            game_format = SgaV2GameFormat.ImpossibleCreatures
+        else:
+            game_format = None
+
+        if out_sga is not None:
+            Path(out_sga).parent.mkdir(parents=True, exist_ok=True)
+
+        with open(in_sga, "rb") as sga_h:
+            sgafs = EssenceFSV2(
+                sga_h, parse_handle=True, in_memory=True, game=game_format
+            )
             # Write to binary file:
-            print(f"\tWriting `{out_sga}`")
-            with open(out_sga, "wb") as sga_file:
-                v2_serializer.write(sga_file, sga)
-            print(f"\tDone!")
+            if out_sga is not None:
+                logger.info(f"\tWriting `{out_sga}`")
 
-        return None
-
-
-if __name__ == "__main__":
-    # shortcut to root cli
-    from relic.core.cli import cli_root
-
-    cli_root.run()
+                with open(out_sga, "wb") as sga_file:
+                    sgafs.save(sga_file)
+            else:
+                sgafs.save()
+            logger.info("\tDone!")
+        return 0
