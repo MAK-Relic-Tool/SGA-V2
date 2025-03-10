@@ -16,6 +16,10 @@ from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
 from relic.sga.v2.serialization import SgaV2GameFormat
 from relic.core.logmsg import BraceMessage
 
+from relic.sga.v2.essencefs.definitions import SgaPathResolver
+
+from fs.info import Info
+
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
 
@@ -195,4 +199,152 @@ class RelicSgaRepackV2Cli(CliPlugin):
             else:
                 sgafs.save()
             logger.info("\tDone!")
+        return 0
+
+
+class RelicSgaVerifyV2Cli(CliPlugin):
+    def _create_parser(
+        self, command_group: Optional[_SubParsersAction] = None
+    ) -> ArgumentParser:
+        parser: ArgumentParser
+        if command_group is None:
+            parser = ArgumentParser("verify")
+        else:
+            parser = command_group.add_parser("verify")
+
+        parser.add_argument(
+            "sga", type=_get_file_type_validator(exists=True), help="Input SGA File"
+        )
+        parser.add_argument(
+            "--all",
+            action="store_true",
+            help="Shorthand for '-H -D -F', if no flags are specified, '--all' is implied ",
+        )
+        parser.add_argument(
+            "-H",
+            "--header",
+            action="store_true",
+            help="Verify the SGA Header's MD5 hash",
+        )
+        parser.add_argument(
+            "-D", "--data", action="store_true", help="Verify SGA Data's MD5 hash"
+        )
+        parser.add_argument(
+            "-F", "--files", action="store_true", help="Verify SGA Files's CRC32 hashes"
+        )
+        parser.add_argument(
+            "-q", "--quiet", action="store_true", help="Only print failures and errors"
+        )
+        parser.add_argument(
+            "-e", "--error", action="store_true", help="Stop on first failure or error"
+        )
+        parser.add_argument(
+            "--tree",
+            action="store_true",
+            help="Prints the SGA File's results in a tree format, if '-q' is specified, folders will still be printed",
+        )
+        return parser
+
+    def command(self, ns: Namespace, *, logger: logging.Logger) -> Optional[int]:
+        # Extract Args
+        sga: str = ns.sga
+        verify_all: bool = ns.all
+        verify_header: bool = ns.header
+        verify_data: bool = ns.data
+        verify_files: bool = ns.files
+        quiet_mode: bool = ns.quiet
+        fail_on_error: bool = ns.error
+        print_files_as_tree: bool = ns.tree
+
+        if verify_all:
+            if any([verify_data, verify_header, verify_files]):
+                logger.warning(
+                    "'--all' is ignoring a '-H', '-D' or '-F' flag, this may be an error, please only use '--all' or a combination of the verification flags"
+                )
+            verify_files = verify_header = verify_data = True
+        elif not any([verify_data, verify_header, verify_files]):
+            if quiet_mode:
+                logger.info("No verification flags specified, assuming '--all' flag")
+            verify_files = verify_header = verify_data = True
+
+        def get_valid_msg(v: Optional[bool]) -> str:
+            return "Pass" if v is True else ("Fail" if v is False else "ERROR")
+
+        def error_failure() -> int:
+            logger.info("\tVerification Failed!")
+            return 1
+
+        with open(sga, "rb") as sga_h:
+            sgafs = EssenceFSV2(
+                sga_h,
+                parse_handle=True,
+                in_memory=False,
+            )
+            if verify_header:
+                try:
+                    header_valid = sgafs.verify_sga_header(True)
+                except RelicToolError as e:
+                    header_valid = False
+                    logger.error(e)
+
+                if not quiet_mode or not header_valid:
+                    logger.info(
+                        BraceMessage("SGA Header: {0}", get_valid_msg(header_valid))
+                    )
+                if fail_on_error and not header_valid:
+                    return error_failure()
+
+            if verify_data:
+                try:
+                    data_valid = sgafs.verify_sga_file(True)
+                except RelicToolError as e:
+                    data_valid = False
+                    logger.error(e)
+                if not quiet_mode or not data_valid:
+                    logger.info(
+                        BraceMessage("SGA Data: {0}", get_valid_msg(data_valid))
+                    )
+                if fail_on_error and not data_valid:
+                    return error_failure()
+
+            if verify_files:
+                prev_level = 0
+                for step in sgafs.walk("/"):
+                    nest_level = 0  # only usedf if print_files_as_tree is used
+                    if print_files_as_tree:
+                        parts = SgaPathResolver.split_parts(step.path)
+                        nest_level = max(0, len(parts) - 1)
+                        logger.info(
+                            BraceMessage("{0}`- {1}", " " * nest_level, parts[-1])
+                        )
+                    # print(prev_level, level)
+                    file: Info
+                    for file in step.files:
+                        name = file.name
+                        path = SgaPathResolver.join(step.path, name)
+                        try:
+                            file_valid = sgafs.verify_file_crc(path, True)
+                        except RelicToolError as e:
+                            file_valid = False
+                            logger.error(e)
+                        if not quiet_mode or not file_valid:
+                            if print_files_as_tree:
+                                logger.info(
+                                    BraceMessage(
+                                        "{0}`- {1}: {2}",
+                                        " " * (nest_level + 1),
+                                        name,
+                                        get_valid_msg(file_valid),
+                                    )
+                                )
+                            else:
+                                logger.info(
+                                    BraceMessage(
+                                        "{0}: {1}", path, get_valid_msg(file_valid)
+                                    )
+                                )
+                        if fail_on_error and not file_valid:
+                            return error_failure()
+
+            logger.info("\tVerification Passed!")
         return 0
