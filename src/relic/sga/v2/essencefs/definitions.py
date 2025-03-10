@@ -13,6 +13,7 @@ from os import PathLike
 from pathlib import PureWindowsPath
 from threading import RLock
 from types import TracebackType
+from relic.core.logmsg import BraceMessage
 from typing import (
     BinaryIO,
     List,
@@ -161,7 +162,9 @@ class SgaPathResolver:
 
     @classmethod
     def build(cls, *path: str, alias: Optional[str] = None) -> str:
-        logger.debug("Building path given `{0}` & alias: `{1}`", path, alias)
+        logger.debug(
+            BraceMessage("Building path given `{0}` & alias: `{1}`", path, alias)
+        )
         full_path = cls.join(*path)
         full_path = cls.fix_case(full_path)
         if alias:
@@ -174,7 +177,7 @@ class SgaPathResolver:
 
     @classmethod
     def parse(cls, path: str) -> Tuple[Optional[str], str]:
-        logger.debug("Parsing path `{0}` into alias/path tuple", path)
+        logger.debug(BraceMessage("Parsing path `{0}` into alias/path tuple", path))
         if ":" in path:
             alias, path = path.split(":", maxsplit=1)
         else:
@@ -184,21 +187,25 @@ class SgaPathResolver:
     @classmethod
     def fix_seperator(cls, path: str) -> str:
         logger.debug(
-            "Fixing Seperator in `{0}` (`{1}` => `{2}`)", path, cls.INV_SEP, cls.SEP
+            BraceMessage(
+                "Fixing Seperator in `{0}` (`{1}` => `{2}`)", path, cls.INV_SEP, cls.SEP
+            )
         )
         return path.replace(cls.INV_SEP, cls.SEP)
 
     @classmethod
     def fix_case(cls, path: str) -> str:
-        logger.debug("Fix Case in `{0}` (`upper` => `lower`)", path)
+        logger.debug(BraceMessage("Fix Case in `{0}` (`upper` => `lower`)", path))
         return path.lower()
 
     @classmethod
     def split_parts(cls, path: str, include_root: bool = True) -> List[str]:
         logger.debug(
-            "Separating `{0}` into parts{1}",
-            path,
-            " (including root)" if include_root else "",
+            BraceMessage(
+                "Separating `{0}` into parts{1}",
+                path,
+                " (including root)" if include_root else "",
+            )
         )
         path = cls.fix_seperator(path)
         path = cls.fix_case(path)
@@ -222,9 +229,11 @@ class SgaPathResolver:
     @classmethod
     def join(cls, *parts: str, add_root: bool = False) -> str:
         logger.debug(
-            "Joining `{0}`{1}",
-            parts,
-            " (and adding root `" + cls.ROOT + "`)" if add_root else "",
+            BraceMessage(
+                "Joining `{0}`{1}",
+                parts,
+                " (and adding root `" + cls.ROOT + "`)" if add_root else "",
+            )
         )
         fixed_parts = (cls.fix_seperator(part) for part in parts)
         result = ""
@@ -242,7 +251,7 @@ class SgaPathResolver:
 
     @classmethod
     def split(cls, path: str) -> Tuple[str, str]:
-        logger.debug("Splitting `{0}` into head, tail", path)
+        logger.debug(BraceMessage("Splitting `{0}` into head, tail", path))
         parts = cls.split_parts(path)
         if len(parts) > 0:
             return cls.join(*parts[:-1]), parts[-1]
@@ -250,19 +259,19 @@ class SgaPathResolver:
 
     @classmethod
     def strip_root(cls, path: str) -> str:
-        logger.debug("Stripping root from `{0}`", path)
+        logger.debug(BraceMessage("Stripping root from `{0}`", path))
         if len(path) > 0 and path[0] == cls.ROOT:
             return path[1:]
         return path
 
     @classmethod
     def basename(cls, path: str) -> str:
-        logger.debug("Getting basename of `{0}`", path)
+        logger.debug(BraceMessage("Getting basename of `{0}`", path))
         return cls.split(path)[1]
 
     @classmethod
     def dirname(cls, path: str) -> str:
-        logger.debug("Getting dirname of `{0}`", path)
+        logger.debug(BraceMessage("Getting dirname of `{0}`", path))
         return cls.split(path)[0]
 
 
@@ -345,7 +354,7 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
         return self._info.storage_type
 
     def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
-        logger.debug("Getting Info for `{0}` (LazyInfo)", self.name)
+        logger.debug(BraceMessage("Getting Info for `{0}` (LazyInfo)", self.name))
         if namespaces is None:
             namespaces = []
 
@@ -382,7 +391,7 @@ class SgaFsFileV2Lazy(_SgaFsFileV2):
             yield self._data_info.data(decompress=True)
 
     def verify_crc32(self, error: bool) -> bool:
-        logger.debug("Verifying CRC32 for `{0}` (LazyFile)", self.name)
+        logger.debug(BraceMessage("Verifying CRC32 for `{0}` (LazyFile)", self.name))
         # Locking should be handled by opening file, no need to lock here
         with self.openbin("r") as stream:
             expected = self._data_info.header.crc32
@@ -473,7 +482,7 @@ class SgaFsFileV2Mem(_SgaFsFileV2):  # pylint: disable=r0902
         return RelicDateTimeSerializer.datetime2unix(self._modified)
 
     def getinfo(self, namespaces: Optional[Collection[str]] = None) -> Info:
-        logger.debug("Getting Info for `{0}` (MemFile)", self.name)
+        logger.debug(BraceMessage("Getting Info for `{0}` (MemFile)", self.name))
         if namespaces is None:
             namespaces = []
 
@@ -488,7 +497,9 @@ class SgaFsFileV2Mem(_SgaFsFileV2):  # pylint: disable=r0902
 
     def setinfo(self, info: Mapping[str, Mapping[str, object]]) -> None:
         logger.debug(
-            "Setting (Updating) Info for `{0}` (MemFile) to `{1}`", self.name, info
+            BraceMessage(
+                "Setting (Updating) Info for `{0}` (MemFile) to `{1}`", self.name, info
+            )
         )
         if NS_DETAILS in info:
             self._modified = info[NS_DETAILS]["modified"]  # type: ignore
@@ -1071,7 +1082,7 @@ class _V2TocDisassembler:  # pylint:disable=r0902
         self._drive_count = 0
 
     def _write_name_to_table(self, table: Dict[str, int], name: str) -> int:
-        logger.debug("Writing `{0}` to name table `{1}`", name, table)
+        logger.debug(BraceMessage("Writing `{0}` to name table `{1}`", name, table))
         name = SgaPathResolver.fix_seperator(name)
         _, name = SgaPathResolver.parse(name)
         name = SgaPathResolver.strip_root(name)
@@ -1095,7 +1106,7 @@ class _V2TocDisassembler:  # pylint:disable=r0902
         return result
 
     def write_name_in_drive(self, drive: str, name: str = SgaPathResolver.ROOT) -> int:
-        logger.debug("Writing `{0}` in drive `{1}`", name, drive)
+        logger.debug(BraceMessage("Writing `{0}` in drive `{1}`", name, drive))
         name_table = self._get_or_make_name_table(drive)
         return self._write_name_to_table(name_table, name.lower())
 
@@ -2275,6 +2286,24 @@ class EssenceFSV2(EssenceFS):  # pylint: disable=r0902
             if in_memory is True:
                 self._unlazy()
 
+    def verify_sga_header(self, error: bool = False) -> Optional[bool]:
+        if self._lazy_file is None:
+            if error:
+                raise RelicToolError(
+                    "SGA header validation is only supported on lazy files. This SGA has been loaded into memory."
+                )
+            return None
+        return self._lazy_file.verify_header(error=error)
+
+    def verify_sga_file(self, error: bool = False) -> Optional[bool]:
+        if self._lazy_file is None:
+            if error:
+                raise RelicToolError(
+                    "SGA header validation is only supported on lazy files. This SGA has been loaded into memory."
+                )
+            return None
+        return self._lazy_file.verify_file(error=error)
+
     def _unlazy(self) -> None:
         """Converts the filesystem into an in-memory filesystem.
 
@@ -2561,7 +2590,7 @@ class EssenceFSV2(EssenceFS):  # pylint: disable=r0902
     def verify_file_crc(self, path: str, error: bool = False) -> bool:
         node: SgaFsFileV2 = self._getnode(path, exists=True)  # type: ignore
         if node.getinfo("basic").is_dir:
-            raise fs.errors.FileExists(path)
+            raise fs.errors.FileExpected(path)
         return node.verify_crc32(error)
 
     def close(self):  # type: () -> None
