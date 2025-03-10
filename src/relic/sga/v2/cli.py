@@ -213,7 +213,7 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             parser = command_group.add_parser("verify")
 
         parser.add_argument(
-            "sga", type=_get_file_type_validator(exists=True), help="Input SGA File"
+            "sga_file", type=_get_file_type_validator(exists=True), help="Input SGA File"
         )
         parser.add_argument(
             "--all",
@@ -247,7 +247,7 @@ class RelicSgaVerifyV2Cli(CliPlugin):
 
     def command(self, ns: Namespace, *, logger: logging.Logger) -> Optional[int]:
         # Extract Args
-        sga: str = ns.sga
+        sga: str = ns.sga_file
         verify_all: bool = ns.all
         verify_header: bool = ns.header
         verify_data: bool = ns.data

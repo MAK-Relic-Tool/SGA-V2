@@ -78,7 +78,37 @@ options:
   --logconfig [LOGCONFIG]
                         Path to a logging config file.
 ```
+### Verifying Archives
+Checks the MD5 Hashes and/or the SGS File's CRCs
 
+Useful for verifying if file's have been modified or corrupted.
+
+SGA archives may still be used in-game even if they fail verification
+```
+relic sga v2 verify sga_file
+```
+```
+usage: relic sga v2 verify [-h] [--all] [-H] [-D] [-F] [-q] [-e] [--tree] [--log [LOG]] [--loglevel [{none,debug,info,warning,error,critical}]] [--logconfig [LOGCONFIG]] sga_file
+
+positional arguments:
+  sga_file                   Input SGA File
+
+options:
+  -h, --help            show this help message and exit
+  --all                 Shorthand for '-H -D -F', if no flags are specified, '--all' is implied
+  -H, --header          Verify the SGA Header's MD5 hash
+  -D, --data            Verify SGA Data's MD5 hash
+  -F, --files           Verify SGA Files's CRC32 hashes
+  -q, --quiet           Only print failures and errors
+  -e, --error           Stop on first failure or error
+  --tree                Prints the SGA File's results in a tree format, if '-q' is specified, folders will still be printed
+  --log [LOG]           Path to the log file, if one is generated
+  --loglevel [{none,debug,info,warning,error,critical}]
+                        Verbosity of the log. Defaults to `info`
+  --logconfig [LOGCONFIG]
+                        Path to a logging config file.
+
+```
 
 
 ## Report A Bug / Issue
