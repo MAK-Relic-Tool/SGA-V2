@@ -35,7 +35,7 @@ jobs:
         python -m pip install build
 
     - name: Build Repo
-      run: python -m build ${{ './src' }}
+      run: python -m build ${{ '.' }}
 
     - name: Upload to Test PyPI
       uses: pypa/gh-action-pypi-publish@release/v1
