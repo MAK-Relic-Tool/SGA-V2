@@ -213,7 +213,9 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             parser = command_group.add_parser("verify")
 
         parser.add_argument(
-            "sga_file", type=_get_file_type_validator(exists=True), help="Input SGA File"
+            "sga_file",
+            type=_get_file_type_validator(exists=True),
+            help="Input SGA File",
         )
         parser.add_argument(
             "--all",
