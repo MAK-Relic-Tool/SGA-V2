@@ -8,6 +8,7 @@ from io import StringIO
 from logging import getLogger
 from os import PathLike
 from typing import Optional, Iterable, Union, List, Dict, Any, TextIO, Iterator
+from relic.core.logmsg import BraceMessage
 
 from relic.core.errors import RelicToolError
 from relic.sga.v2.arciv.errors import ArcivWriterError, ArcivEncoderError
@@ -50,10 +51,10 @@ class ArcivWriter:
         A context manager that manages the indent level of the writer
         """
         self._indent_level += 1
-        logger.debug("Entering Indent `{0}`", self._indent_level)
+        logger.debug(BraceMessage("Entering Indent `{0}`", self._indent_level))
         yield None
         self._indent_level -= 1
-        logger.debug("Exiting Indent `{0}`", self._indent_level)
+        logger.debug(BraceMessage("Exiting Indent `{0}`", self._indent_level))
 
     def _formatted(
         self,
@@ -66,12 +67,14 @@ class ArcivWriter:
         Returns a list of formatted tokens
         """
         logger.debug(
-            "Formatting `{0}` (newline:{1}, comma:{2}, no_indent:{3}, _indent_level:{4})",
-            values,
-            newline,
-            comma,
-            no_indent,
-            self._indent_level,
+            BraceMessage(
+                "Formatting `{0}` (newline:{1}, comma:{2}, no_indent:{3}, _indent_level:{4})",
+                values,
+                newline,
+                comma,
+                no_indent,
+                self._indent_level,
+            )
         )
 
         if (
@@ -98,10 +101,12 @@ class ArcivWriter:
         Formats a number-like as a string (formatted as an string) in the 'arciv' specification
         """
         logger.debug(
-            "Formatting String `{0}` (in_collection:{1}, in_assignment:{2})",
-            value,
-            in_collection,
-            in_assignment,
+            BraceMessage(
+                "Formatting String `{0}` (in_collection:{1}, in_assignment:{2})",
+                value,
+                in_collection,
+                in_assignment,
+            )
         )
         yield from self._formatted(
             f'"{value}"',
@@ -121,10 +126,12 @@ class ArcivWriter:
         Formats a number-like as a string (formatted as an int object) in the 'arciv' specification
         """
         logger.debug(
-            "Formatting Number `{0}` (in_collection:{1}, in_assignment:{2})",
-            value,
-            in_collection,
-            in_assignment,
+            BraceMessage(
+                "Formatting Number `{0}` (in_collection:{1}, in_assignment:{2})",
+                value,
+                in_collection,
+                in_assignment,
+            )
         )
         yield from self._formatted(
             str(value),
@@ -144,10 +151,12 @@ class ArcivWriter:
         Formats a string-like as a string (formatted as a path object) in the 'arciv' specification
         """
         logger.debug(
-            "Formatting Path `{0}` (in_collection:{1}, in_assignment:{2})",
-            value,
-            in_collection,
-            in_assignment,
+            BraceMessage(
+                "Formatting Path `{0}` (in_collection:{1}, in_assignment:{2})",
+                value,
+                in_collection,
+                in_assignment,
+            )
         )
         yield from self._formatted(
             f"[[{os.fspath(value)}]]",
@@ -167,10 +176,12 @@ class ArcivWriter:
         Formats a collection as a string in the 'arciv' specification
         """
         logger.debug(
-            "Formatting Collection `{0}` (in_collection:{1}, in_assignment:{2})",
-            encoded,
-            in_collection,
-            in_assignment,
+            BraceMessage(
+                "Formatting Collection `{0}` (in_collection:{1}, in_assignment:{2})",
+                encoded,
+                in_collection,
+                in_assignment,
+            )
         )
         if in_assignment:
             yield from self._formatted(newline=True)
@@ -209,11 +220,13 @@ class ArcivWriter:
         Formats an arbitrary value as a string in the 'arciv' specification
         """
         logger.debug(
-            "Formatting Item `{0}` (in_collection:{1}, in_assignment:{2}, encode:{3})",
-            value,
-            in_collection,
-            in_assignment,
-            encode,
+            BraceMessage(
+                "Formatting Item `{0}` (in_collection:{1}, in_assignment:{2}, encode:{3})",
+                value,
+                in_collection,
+                in_assignment,
+                encode,
+            )
         )
         encoded = self._encoder.default(value) if encode else value
         if isinstance(encoded, (list, dict)):
@@ -244,10 +257,12 @@ class ArcivWriter:
         Formats a key-value pair into a string in the 'arciv' specification
         """
         logger.debug(
-            "Formatting Key/Value `{0}`/`{1}` (in_collection:{2})",
-            key,
-            value,
-            in_collection,
+            BraceMessage(
+                "Formatting Key/Value `{0}`/`{1}` (in_collection:{2})",
+                key,
+                value,
+                in_collection,
+            )
         )
         yield from self._formatted(key, "=")
         if self._settings.has_whitespace:
@@ -260,7 +275,7 @@ class ArcivWriter:
         """
         Converts the given data into string tokens that can be written to a file
         """
-        logger.debug("Iterating Tokens on {0}", data)
+        logger.debug(BraceMessage("Iterating Tokens on {0}", data))
         encoded = self._encoder.default(data)
         if not isinstance(encoded, dict):
             raise RelicToolError(
@@ -273,7 +288,7 @@ class ArcivWriter:
         """
         Writes the data to a string, using the 'arciv' specification.
         """
-        logger.debug("Writing Arciv data {0} to string", data)
+        logger.debug(BraceMessage("Writing Arciv data {0} to string", data))
         with StringIO() as fp:
             self.writef(fp, data)
             return fp.getvalue()
@@ -282,7 +297,7 @@ class ArcivWriter:
         """
         Writes the data to the file handle, using the 'arciv' specification.
         """
-        logger.debug("Writing Arciv data {0} to file {1}", data, fp)
+        logger.debug(BraceMessage("Writing Arciv data {0} to file {1}", data, fp))
         for token in self.tokens(data):
             fp.write(token)
 

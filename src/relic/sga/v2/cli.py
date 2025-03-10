@@ -14,6 +14,7 @@ from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
 from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
 from relic.sga.v2.serialization import SgaV2GameFormat
+from relic.core.logmsg import BraceMessage
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
@@ -97,7 +98,11 @@ class RelicSgaPackV2Cli(CliPlugin):
 
         # Execute Command
         logger.info("SGA Packer")
-        logger.info(f"\tReading Manifest `{manifest_path}`")
+        logger.info(
+            BraceMessage(
+                "\tReading Manifest `{manifest_path}`", manifest_path=manifest_path
+            )
+        )
         with open(manifest_path, "r", encoding="utf-8") as manifest_handle:
             if manifest_is_json:
                 manifest_json: Dict[str, Any] = json.load(manifest_handle)
@@ -114,7 +119,9 @@ class RelicSgaPackV2Cli(CliPlugin):
             os.makedirs(out_path, exist_ok=True)
         # Create full path
         full_out_path = os.path.join(out_path, file_name)
-        logger.info(f"\tPacking SGA `{full_out_path}`")
+        logger.info(
+            BraceMessage("\tPacking SGA `{full_out_path}`", full_out_path=full_out_path)
+        )
         with open(full_out_path, "wb") as out_handle:
             SgaFsV2Packer.pack(manifest, out_handle, safe_mode=True)
         logger.info("\t\tPacked")
@@ -153,12 +160,18 @@ class RelicSgaRepackV2Cli(CliPlugin):
         # Execute Command
 
         if out_sga is None:
-            logger.info(f"Re-Packing `{in_sga}`")
+            logger.info(BraceMessage("Re-Packing `{in_sga}`", in_sga=in_sga))
         else:
-            logger.info(f"Re-Packing `{in_sga}` as `{out_sga}`")
+            logger.info(
+                BraceMessage(
+                    "Re-Packing `{in_sga}` as `{out_sga}`",
+                    in_sga=in_sga,
+                    out_sga=out_sga,
+                )
+            )
 
         # Create 'SGA'
-        logger.info(f"\tReading `{in_sga}`")
+        logger.info(BraceMessage("\tReading `{in_sga}`", in_sga=in_sga))
         if "Dawn of War" in in_sga:
             game_format = SgaV2GameFormat.DawnOfWar
         elif "Impossible Creatures" in in_sga:
@@ -175,7 +188,7 @@ class RelicSgaRepackV2Cli(CliPlugin):
             )
             # Write to binary file:
             if out_sga is not None:
-                logger.info(f"\tWriting `{out_sga}`")
+                logger.info(BraceMessage("\tWriting `{out_sga}`", out_sga=out_sga))
 
                 with open(out_sga, "wb") as sga_file:
                     sgafs.save(sga_file)

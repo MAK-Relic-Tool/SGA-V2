@@ -13,7 +13,7 @@ classifiers = [
   "Programming Language :: Python :: 3.13",
   "License :: OSI Approved :: GNU General Public License v3 (GPLv3)"
 ]
-dependencies = ["relic-tool-sga-core >= 2.0.0", "ply >= 3.11"]
+dependencies = ["relic-tool-sga-core >= 2.0.0", "ply >= 3.11", "relic-tool-core>=2.3.0"]
 description = "A plugin to read/write Relic SGA (V2) archive files."
 dynamic = ["version"]
 name = "relic-tool-sga-v2"
