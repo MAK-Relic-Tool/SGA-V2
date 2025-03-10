@@ -6,7 +6,7 @@ from relic.sga.v2.definitions import (
 
 from relic.sga.v2.essencefs import EssenceFSV2Opener, EssenceFSV2
 
-__version__ = "2.0.1"
+__version__ = "2.1.0"
 
 __all__ = [
     "EssenceFSV2Opener",
