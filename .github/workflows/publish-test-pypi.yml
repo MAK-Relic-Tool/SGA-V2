@@ -5,6 +5,6 @@ on:
 
 jobs:
   test-pypi-publish:
-    uses: MAK-Relic-Tool/Workflows/.github/workflows/publish-to-pypi.yml@main
+    uses: MAK-Relic-Tool/Workflows/.github/workflows/publish-to-test-pypi.yml@main
     with:
       package-name: relic-tool-sga-v2
