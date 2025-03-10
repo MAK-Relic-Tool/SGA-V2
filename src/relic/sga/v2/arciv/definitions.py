@@ -21,7 +21,7 @@ class ArchiveHeader:
     Contains all valid fields defined in the '.arciv' specification
     """
 
-    ArchiveName: str
+    ArchiveName: str  # pylint: disable=C0103
 
     @classmethod
     def default(cls) -> ArchiveHeader:

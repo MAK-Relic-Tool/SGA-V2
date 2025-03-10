@@ -29,6 +29,7 @@ v2 = "relic.sga.v2.cli:RelicSgaV2Cli"
 
 [project.entry-points."relic.cli.sga.v2"]
 pack = "relic.sga.v2.cli:RelicSgaPackV2Cli"
+verify = "relic.sga.v2.cli:RelicSgaVerifyV2Cli"
 repack = "relic.sga.v2.cli:RelicSgaRepackV2Cli"
 
 [project.entry-points."relic.sga.opener"]

@@ -13,6 +13,8 @@ from fs.base import FS
 from fs.info import Info
 
 from relic.core.cli import CLI
+from relic.sga.v2 import EssenceFSV2
+from relic.sga.v2.serialization import SgaV2GameFormat
 
 
 class CommandTests:
@@ -145,5 +147,30 @@ def test_cli_repack(src: str):
     finally:
         try:
             os.unlink(repacked_file_name)
+        except:
+            ...
+
+
+def test_cli_verify():
+    # Very basic test, should make a better one
+    temp_sga_file: str = None
+    try:
+        with tempfile.NamedTemporaryFile("wb+", delete=False) as temp_sga:
+            temp_sga_file = temp_sga.name
+            with EssenceFSV2(
+                temp_sga, parse_handle=False, game=SgaV2GameFormat.DawnOfWar
+            ) as sga:
+                with sga.makedirs("data:/sample_fold", recreate=True) as fold:
+                    with fold.openbin("/blob.data", "wb") as h1:
+                        h1.write(b"BlobBlobBlob")
+
+                with sga.openbin("data:/test.data", "wb") as h:
+                    h.write(b"TestTestTest")
+
+        status = CLI.run_with("sga", "v2", "verify", temp_sga_file)
+        assert status == 0
+    finally:
+        try:
+            os.unlink(temp_sga_file)
         except:
             ...

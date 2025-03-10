@@ -2296,6 +2296,7 @@ class EssenceFSV2(EssenceFS):  # pylint: disable=r0902
         return self._lazy_file.verify_header(error=error)
 
     def verify_sga_file(self, error: bool = False) -> Optional[bool]:
+        # TODO: Next major, rename this to verify_sga_data
         if self._lazy_file is None:
             if error:
                 raise RelicToolError(
