@@ -1,6 +1,7 @@
 """Binary Serializers for Relic's SGA-V2."""
 
 from __future__ import annotations
+from relic.core.logmsg import BraceMessage
 
 import logging
 import os
@@ -397,8 +398,10 @@ class LazySgaTocFileDataHeaderV2Dow(
     def check_header_valid(self) -> bool:
         def _warn(name: str) -> None:
             logger.warning(
-                "Failed to parse File Data Header `{0}`, the header may be missing or invalid.",
-                name,
+                BraceMessage(
+                    "Failed to parse File Data Header `{0}`, the header may be missing or invalid.",
+                    name,
+                )
             )
 
         try:
@@ -451,13 +454,17 @@ class SgaTocFileDataV2:
             has_data_header and _lazy_data_header.check_header_valid()
         ):
             logger.debug(
-                "File `{0}` {1} a Data Header",
-                self.name,
-                "has" if has_safe_data_header else "may have",
+                BraceMessage(
+                    "File `{0}` {1} a Data Header",
+                    self.name,
+                    "has" if has_safe_data_header else "may have",
+                ),
             )
             self._data_header = _lazy_data_header
         else:
-            logger.debug("File `{0}` is missing its Data Header", self.name)
+            logger.debug(
+                BraceMessage("File `{0}` is missing its Data Header", self.name)
+            )
             _name = self.name
             _data = self.data(True).read(-1)
             self._data_header = MemSgaTocFileDataHeaderV2Dow.create(_name, _data)
@@ -472,7 +479,9 @@ class SgaTocFileDataV2:
 
     def data(self, decompress: bool = True) -> BinaryIO:
         logger.debug(
-            "Reading File Data from the Data Window (decompress={0})", decompress
+            BraceMessage(
+                "Reading File Data from the Data Window (decompress={0})", decompress
+            )
         )
         offset = self._toc_file.data_offset
         size = self._toc_file.compressed_size
@@ -631,10 +640,12 @@ class SgaFileV2(SgaFile):
         self._has_file_data_headers = _expected_data_size <= _data_size
         self._has_safe_file_data_headers = _expected_data_size == _data_size
         logger.debug(
-            "File `{0}` has {1} {2}Headers",
-            self._meta.name,
-            "" if self._has_file_data_headers else "No ",
-            "Exact " if self._has_safe_file_data_headers else "",
+            BraceMessage(
+                "File `{0}` has {1} {2}Headers",
+                self._meta.name,
+                "" if self._has_file_data_headers else "No ",
+                "Exact " if self._has_safe_file_data_headers else "",
+            )
         )
 
     def __determine_expected_data_window_size(self) -> int:
@@ -674,7 +685,7 @@ class SgaFileV2(SgaFile):
         return getattr(self, cache_name)  # type: ignore
 
     def verify_file(self, cached: bool = True, error: bool = False) -> bool:
-        logger.debug("Verifying `{0}` Header MD5", self._meta.name)
+        logger.debug(BraceMessage("Verifying `{0}` Header MD5", self._meta.name))
         NAME = "__verified_file"
         return self.__verify(
             cached=cached,
@@ -686,7 +697,7 @@ class SgaFileV2(SgaFile):
         )
 
     def verify_header(self, cached: bool = True, error: bool = False) -> bool:
-        logger.debug("Verifying `{0}` Header MD5", self._meta.name)
+        logger.debug(BraceMessage("Verifying `{0}` Header MD5", self._meta.name))
         NAME = "__verified_header"
         return self.__verify(
             cached=cached,
