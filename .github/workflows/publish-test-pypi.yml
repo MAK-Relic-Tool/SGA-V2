@@ -9,6 +9,9 @@ jobs:
 
     runs-on: ubuntu-latest
 
+    permissions:
+      id-token: write
+
     environment:
       name: ${{ 'testpypi' }}
       url: https://test.pypi.org/p/${{ 'relic-tool-sga-v2' }}
