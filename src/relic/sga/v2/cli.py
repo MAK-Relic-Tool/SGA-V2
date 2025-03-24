@@ -8,8 +8,9 @@ from typing import Optional, Dict, Any
 
 from relic.core.cli import CliPlugin, _SubParsersAction, RelicArgParser, CliPluginGroup
 from relic.core.errors import RelicToolError
-from relic.sga.core.cli import _get_file_type_validator
+from relic.core.cli import get_file_type_validator
 
+from relic.sga.core.cli import cli_open_sga
 from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
 from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
@@ -17,10 +18,30 @@ from relic.sga.v2.serialization import SgaV2GameFormat
 from relic.core.logmsg import BraceMessage
 
 from relic.sga.v2.essencefs.definitions import SgaPathResolver
-
+from contextlib import contextmanager
 from fs.info import Info
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
+
+
+@contextmanager
+def cli_open_sga_v2(src: str, logger: logging.Logger):
+    # We can't use sga-v2 default_protocol
+    # Mismatch & Version Errors aren't raised by the V2 Opener
+    # TODO, fix that
+    with cli_open_sga(src, logger) as sga:
+        if not isinstance(sga, EssenceFSV2):
+            logger.info("SGA is not V2")
+            try:  # try to get version, we cant open the handle to check, it might be in use
+                sga_version = sgafs.getmeta(namespace="essence").get("version")
+                logger.info("Recieved SGA Version: '{0}'", sga_version)
+            except Exception as e:
+                logger.debug(
+                    "Failed to retrieve SGA Version from the filesystem's essence namespace"
+                )
+                logger.debug(e, exc_info=True)
+            raise SystemExit(-1)  # 0-2 are used in parent errors
+        yield sga
 
 
 class RelicSgaV2Cli(CliPluginGroup):
@@ -47,7 +68,7 @@ class RelicSgaPackV2Cli(CliPlugin):
 
         parser.add_argument(
             "manifest",
-            type=_get_file_type_validator(exists=True),
+            type=get_file_type_validator(exists=True),
             help="An .arciv file (or a suitable .json matching the .arciv tree)."
             " If the file extension is not '.json' or '.arciv', '.arciv' is assumed",
         )
@@ -144,12 +165,12 @@ class RelicSgaRepackV2Cli(CliPlugin):
             parser = command_group.add_parser("repack")
 
         parser.add_argument(
-            "in_sga", type=_get_file_type_validator(exists=True), help="Input SGA File"
+            "in_sga", type=get_file_type_validator(exists=True), help="Input SGA File"
         )
         parser.add_argument(
             "out_sga",
             nargs="?",
-            type=_get_file_type_validator(exists=False),
+            type=get_file_type_validator(exists=False),
             help="Output SGA File",
             default=None,
         )
@@ -176,20 +197,11 @@ class RelicSgaRepackV2Cli(CliPlugin):
 
         # Create 'SGA'
         logger.info(BraceMessage("\tReading `{in_sga}`", in_sga=in_sga))
-        if "Dawn of War" in in_sga:
-            game_format = SgaV2GameFormat.DawnOfWar
-        elif "Impossible Creatures" in in_sga:
-            game_format = SgaV2GameFormat.ImpossibleCreatures
-        else:
-            game_format = None
 
         if out_sga is not None:
             Path(out_sga).parent.mkdir(parents=True, exist_ok=True)
-
-        with open(in_sga, "rb") as sga_h:
-            sgafs = EssenceFSV2(
-                sga_h, parse_handle=True, in_memory=True, game=game_format
-            )
+        with cli_open_sga_v2(in_sga, logger) as sgafs:
+            sgafs.load_into_memory()  # Ensure its loaded into memory
             # Write to binary file:
             if out_sga is not None:
                 logger.info(BraceMessage("\tWriting `{out_sga}`", out_sga=out_sga))
@@ -214,7 +226,7 @@ class RelicSgaVerifyV2Cli(CliPlugin):
 
         parser.add_argument(
             "sga_file",
-            type=_get_file_type_validator(exists=True),
+            type=get_file_type_validator(exists=True),
             help="Input SGA File",
         )
         parser.add_argument(
@@ -276,12 +288,7 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             logger.info("\tVerification Failed!")
             return 1
 
-        with open(sga, "rb") as sga_h:
-            sgafs = EssenceFSV2(
-                sga_h,
-                parse_handle=True,
-                in_memory=False,
-            )
+        with cli_open_sga_v2(sga, logger) as sgafs:
             if verify_header:
                 try:
                     header_valid = sgafs.verify_sga_header(True)

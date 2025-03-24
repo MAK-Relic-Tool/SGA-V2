@@ -55,8 +55,6 @@ class EssenceFSV2Opener(EssenceFsOpenerPlugin[EssenceFSV2]):
         game_format: Optional[SgaV2GameFormat] = self._PROTO2GAME.get(
             parse_result.protocol, None
         )  # Try to make assumptions about game file format
-        if game_format is None:
-            game_format = _guess_format_from_name(parse_result.resource)
 
         exists = os.path.exists(parse_result.resource)
 
