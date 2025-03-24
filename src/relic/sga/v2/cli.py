@@ -4,17 +4,17 @@ import os
 from argparse import ArgumentParser, Namespace
 from os.path import splitext
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Generator
 
 from relic.core.cli import CliPlugin, _SubParsersAction, RelicArgParser, CliPluginGroup
-from relic.core.errors import RelicToolError
+from relic.core.errors import RelicToolError, RelicSerializationError
 from relic.core.cli import get_file_type_validator
 
 from relic.sga.core.cli import cli_open_sga
+from relic.sga.core.errors import VersionMismatchError
 from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
 from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
-from relic.sga.v2.serialization import SgaV2GameFormat
 from relic.core.logmsg import BraceMessage
 
 from relic.sga.v2.essencefs.definitions import SgaPathResolver
@@ -23,25 +23,34 @@ from fs.info import Info
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
+_WRONG_SGA_VERSION = -1
+_SER_READ_ERR = -2
+
 
 @contextmanager
-def cli_open_sga_v2(src: str, logger: logging.Logger):
-    # We can't use sga-v2 default_protocol
-    # Mismatch & Version Errors aren't raised by the V2 Opener
-    # TODO, fix that
-    with cli_open_sga(src, logger) as sga:
-        if not isinstance(sga, EssenceFSV2):
-            logger.info("SGA is not V2")
-            try:  # try to get version, we cant open the handle to check, it might be in use
-                sga_version = sgafs.getmeta(namespace="essence").get("version")
-                logger.info("Recieved SGA Version: '{0}'", sga_version)
-            except Exception as e:
-                logger.debug(
-                    "Failed to retrieve SGA Version from the filesystem's essence namespace"
-                )
-                logger.debug(e, exc_info=True)
-            raise SystemExit(-1)  # 0-2 are used in parent errors
-        yield sga
+def cli_open_sga_v2(
+    src: str, logger: logging.Logger
+) -> Generator[EssenceFSV2, None, None]:
+    try:
+        with cli_open_sga(src, logger, default_protocol="sga-v2") as sga:
+            yield sga  # type: ignore
+    except VersionMismatchError as ver_err:
+        logger.info("Wrong SGA Version")
+        logger.info(
+            BraceMessage(
+                "Input SGA File '{0}' is '{1}', expected '{2}'",
+                src,
+                ver_err.received,
+                ver_err.expected,
+            )
+        )
+        logger.debug(ver_err, exc_info=True)
+        raise SystemExit(_WRONG_SGA_VERSION) from ver_err
+    except RelicSerializationError as ser_err:
+        logger.info("Failed to parse SGA File")
+        logger.info("Enable debug logging for more information")
+        logger.debug(ser_err, exc_info=True)
+        raise SystemExit(_SER_READ_ERR) from ser_err
 
 
 class RelicSgaV2Cli(CliPluginGroup):
@@ -317,7 +326,6 @@ class RelicSgaVerifyV2Cli(CliPlugin):
                     return error_failure()
 
             if verify_files:
-                prev_level = 0
                 for step in sgafs.walk("/"):
                     nest_level = 0  # only usedf if print_files_as_tree is used
                     if print_files_as_tree:
