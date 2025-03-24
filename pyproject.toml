@@ -29,8 +29,8 @@ v2 = "relic.sga.v2.cli:RelicSgaV2Cli"
 
 [project.entry-points."relic.cli.sga.v2"]
 pack = "relic.sga.v2.cli:RelicSgaPackV2Cli"
-verify = "relic.sga.v2.cli:RelicSgaVerifyV2Cli"
 repack = "relic.sga.v2.cli:RelicSgaRepackV2Cli"
+verify = "relic.sga.v2.cli:RelicSgaVerifyV2Cli"
 
 [project.entry-points."relic.sga.opener"]
 "v2.0" = "relic.sga.v2.essencefs:EssenceFSV2Opener"
@@ -42,6 +42,41 @@ file = "README.md"
 [project.urls]
 "Bug Tracker" = "https://github.com/MAK-Relic-Tool/Issues-Tracker/issues"
 Homepage = "https://github.com/MAK-Relic-Tool/Relic-Tool-SGA-V2"
+
+[tool.coverage.html]
+directory = ".pycoverage_reports/html"
+
+[tool.coverage.paths]
+source = [
+  "src/"
+]
+
+[tool.coverage.report]
+# Regexes for lines to exclude from consideration
+exclude_also = [
+  # Don't complain about missing debug-only code:
+  "def __repr__",
+  "if self\\.debug",
+  # Don't complain if tests don't hit defensive assertion code:
+  "raise AssertionError",
+  "raise NotImplementedError",
+  # Don't complain if non-runnable code isn't run:
+  "if 0:",
+  "if __name__ == .__main__.:",
+  # Don't complain about abstract methods, they aren't run:
+  "@(abc\\.)?abstractmethod"
+]
+fail_under = 100
+ignore_errors = true
+omit = [
+  "tests/*"
+]
+show_missing = true
+skip_covered = true
+skip_empty = true
+
+[tool.coverage.run]
+branch = true
 
 [tool.mypy]
 check_untyped_defs = true

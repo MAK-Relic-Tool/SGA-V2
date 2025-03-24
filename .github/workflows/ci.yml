@@ -1,0 +1,35 @@
+name: Continuous Integration
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches: [main, staging]
+    paths:
+    - src/relic/**
+    - tests/**
+    - .github/workflows/*
+    - pyproject.toml
+    - .pylintrc
+    - MANIFEST.in
+    - requirements.txt
+    - test-requirements.txt
+
+  pull_request:
+    branches: [main, staging]
+    paths:
+    - src/relic/**
+    - tests/**
+    - .github/workflows/*
+    - pyproject.toml
+    - .pylintrc
+    - MANIFEST.in
+    - requirements.txt
+    - test-requirements.txt
+
+jobs:
+  ci:
+    uses: MAK-Relic-Tool/Workflows/.github/workflows/continuous-integration.yml@main
+    with:
+      package: relic.sga.v2
+      test-path: ./tests
