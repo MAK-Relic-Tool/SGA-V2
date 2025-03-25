@@ -4,23 +4,53 @@ import os
 from argparse import ArgumentParser, Namespace
 from os.path import splitext
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, Generator
 
 from relic.core.cli import CliPlugin, _SubParsersAction, RelicArgParser, CliPluginGroup
-from relic.core.errors import RelicToolError
-from relic.sga.core.cli import _get_file_type_validator
+from relic.core.errors import RelicToolError, RelicSerializationError
+from relic.core.cli import get_file_type_validator
 
+from relic.sga.core.cli import cli_open_sga
+from relic.sga.core.errors import VersionMismatchError
 from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
 from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
-from relic.sga.v2.serialization import SgaV2GameFormat
 from relic.core.logmsg import BraceMessage
 
 from relic.sga.v2.essencefs.definitions import SgaPathResolver
-
+from contextlib import contextmanager
 from fs.info import Info
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
+
+_WRONG_SGA_VERSION = -1
+_SER_READ_ERR = -2
+
+
+@contextmanager
+def cli_open_sga_v2(
+    src: str, logger: logging.Logger
+) -> Generator[EssenceFSV2, None, None]:
+    try:
+        with cli_open_sga(src, logger, default_protocol="sga-v2") as sga:
+            yield sga  # type: ignore
+    except VersionMismatchError as ver_err:
+        logger.info("Wrong SGA Version")
+        logger.info(
+            BraceMessage(
+                "Input SGA File '{0}' is '{1}', expected '{2}'",
+                src,
+                ver_err.received,
+                ver_err.expected,
+            )
+        )
+        logger.debug(ver_err, exc_info=True)
+        raise SystemExit(_WRONG_SGA_VERSION) from ver_err
+    except RelicSerializationError as ser_err:
+        logger.info("Failed to parse SGA File")
+        logger.info("Enable debug logging for more information")
+        logger.debug(ser_err, exc_info=True)
+        raise SystemExit(_SER_READ_ERR) from ser_err
 
 
 class RelicSgaV2Cli(CliPluginGroup):
@@ -47,7 +77,7 @@ class RelicSgaPackV2Cli(CliPlugin):
 
         parser.add_argument(
             "manifest",
-            type=_get_file_type_validator(exists=True),
+            type=get_file_type_validator(exists=True),
             help="An .arciv file (or a suitable .json matching the .arciv tree)."
             " If the file extension is not '.json' or '.arciv', '.arciv' is assumed",
         )
@@ -144,12 +174,12 @@ class RelicSgaRepackV2Cli(CliPlugin):
             parser = command_group.add_parser("repack")
 
         parser.add_argument(
-            "in_sga", type=_get_file_type_validator(exists=True), help="Input SGA File"
+            "in_sga", type=get_file_type_validator(exists=True), help="Input SGA File"
         )
         parser.add_argument(
             "out_sga",
             nargs="?",
-            type=_get_file_type_validator(exists=False),
+            type=get_file_type_validator(exists=False),
             help="Output SGA File",
             default=None,
         )
@@ -176,20 +206,11 @@ class RelicSgaRepackV2Cli(CliPlugin):
 
         # Create 'SGA'
         logger.info(BraceMessage("\tReading `{in_sga}`", in_sga=in_sga))
-        if "Dawn of War" in in_sga:
-            game_format = SgaV2GameFormat.DawnOfWar
-        elif "Impossible Creatures" in in_sga:
-            game_format = SgaV2GameFormat.ImpossibleCreatures
-        else:
-            game_format = None
 
         if out_sga is not None:
             Path(out_sga).parent.mkdir(parents=True, exist_ok=True)
-
-        with open(in_sga, "rb") as sga_h:
-            sgafs = EssenceFSV2(
-                sga_h, parse_handle=True, in_memory=True, game=game_format
-            )
+        with cli_open_sga_v2(in_sga, logger) as sgafs:
+            sgafs.load_into_memory()  # Ensure its loaded into memory
             # Write to binary file:
             if out_sga is not None:
                 logger.info(BraceMessage("\tWriting `{out_sga}`", out_sga=out_sga))
@@ -214,7 +235,7 @@ class RelicSgaVerifyV2Cli(CliPlugin):
 
         parser.add_argument(
             "sga_file",
-            type=_get_file_type_validator(exists=True),
+            type=get_file_type_validator(exists=True),
             help="Input SGA File",
         )
         parser.add_argument(
@@ -276,12 +297,7 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             logger.info("\tVerification Failed!")
             return 1
 
-        with open(sga, "rb") as sga_h:
-            sgafs = EssenceFSV2(
-                sga_h,
-                parse_handle=True,
-                in_memory=False,
-            )
+        with cli_open_sga_v2(sga, logger) as sgafs:
             if verify_header:
                 try:
                     header_valid = sgafs.verify_sga_header(True)
@@ -310,7 +326,6 @@ class RelicSgaVerifyV2Cli(CliPlugin):
                     return error_failure()
 
             if verify_files:
-                prev_level = 0
                 for step in sgafs.walk("/"):
                     nest_level = 0  # only usedf if print_files_as_tree is used
                     if print_files_as_tree:

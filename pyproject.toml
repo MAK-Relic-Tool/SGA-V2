@@ -20,9 +20,9 @@ name = "relic-tool-sga-v2"
 requires-python = ">=3.9"
 
 [project.entry-points."fs.opener"]
-sga-dow = "relic.sga.v2.opener:EssenceFSV2Opener"
-sga-ic = "relic.sga.v2.opener:EssenceFSV2Opener"
-sga-v2 = "relic.sga.v2.opener:EssenceFSV2Opener"
+sga-dow = "relic.sga.v2.essencefs.opener:EssenceFSV2Opener"
+sga-ic = "relic.sga.v2.essencefs.opener:EssenceFSV2Opener"
+sga-v2 = "relic.sga.v2.essencefs.opener:EssenceFSV2Opener"
 
 [project.entry-points."relic.cli.sga"]
 v2 = "relic.sga.v2.cli:RelicSgaV2Cli"
@@ -33,7 +33,7 @@ repack = "relic.sga.v2.cli:RelicSgaRepackV2Cli"
 verify = "relic.sga.v2.cli:RelicSgaVerifyV2Cli"
 
 [project.entry-points."relic.sga.opener"]
-"v2.0" = "relic.sga.v2.essencefs:EssenceFSV2Opener"
+"v2.0" = "relic.sga.v2.essencefs.opener:EssenceFSV2Opener"
 
 [project.readme]
 content-type = "text/markdown"
