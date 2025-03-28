@@ -1,12 +1,12 @@
 """
 Lexer for '.arciv' file
 """
-
 from typing import Any
 
 from ply import lex
 from ply.lex import LexToken, Lexer, LexError
 
+from relic.sga.v2.arciv.definitions import ArcivPath
 
 reserved = {
     "Archive": "KW_ARCHIVE",
@@ -91,7 +91,7 @@ def t_NUMBER(t: LexToken) -> LexToken:  # pylint: disable=C0103
 def t_PATH(t: LexToken) -> LexToken:  # pylint: disable=C0103
     r"\[\[.*?\]\]"
     stripped = t.value[2:-2]  # strip brackets
-    t.value = stripped
+    t.value = ArcivPath(stripped)
     return t
 
 

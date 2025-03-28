@@ -1,9 +1,10 @@
 from ply import yacc
+from ply.lex import LexToken
 from ply.yacc import LRParser
 from ply.yacc import YaccError
-from relic.core.errors import RelicToolError
 
 from relic.sga.v2.arciv import lexer
+from relic.sga.v2.arciv.errors import ArcivParsingError
 
 tokens = lexer.tokens
 
@@ -21,7 +22,7 @@ def p_list(p):
             | '{' list_items '}'
     """
     if len(p) == 2:
-        p[0] = {}
+        p[0] = []
     else:
         p[0] = p[2]
 
@@ -53,8 +54,7 @@ def p_list_item(p):
 
 def p_dict(p):
     """
-    dict    : empty
-            | '{' dict_kvs '}'
+    dict    : '{' dict_kvs '}'
     """
 
     if len(p) == 2:
@@ -63,8 +63,8 @@ def p_dict(p):
         p[0] = p[2]
 
 
-def p_error(p):
-    raise RelicToolError(f"Parsing Error: `{p}`") from YaccError(p)
+def p_error(p:LexToken):
+    raise ArcivParsingError(p.type, p.value, p.lineno, p.lexpos) from YaccError(p)
 
 
 def p_dict_kvs(p):

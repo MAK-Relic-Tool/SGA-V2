@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import os
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -14,7 +15,6 @@ from relic.core.errors import RelicToolError
 from relic.sga.v2.arciv.errors import ArcivWriterError, ArcivEncoderError
 
 logger = getLogger(__name__)
-
 
 @dataclass
 class ArcivWriterSettings:
@@ -133,6 +133,13 @@ class ArcivWriter:
                 in_assignment,
             )
         )
+        # Ensure we write the value and not the enum
+        if isinstance(value,enum.Enum):
+            if isinstance(value, int):
+                value = int(value)
+            else:
+                value = float(value)
+
         yield from self._formatted(
             str(value),
             comma=in_collection,
@@ -158,6 +165,7 @@ class ArcivWriter:
                 in_assignment,
             )
         )
+
         yield from self._formatted(
             f"[[{os.fspath(value)}]]",
             comma=in_collection,

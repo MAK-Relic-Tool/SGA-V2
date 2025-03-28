@@ -4,6 +4,7 @@ import dataclasses
 import logging
 from dataclasses import dataclass
 from os import PathLike
+from pathlib import PurePath
 from typing import Dict, Any, List, Union, Optional
 from relic.core.logmsg import BraceMessage
 
@@ -13,6 +14,9 @@ from relic.sga.v2.arciv.writer import _ArcivSpecialEncodable
 
 _module_logger = logging.getLogger(__name__)
 
+# We alias for now; to allow mac/linux support
+# I believe the standard mod tools are windows only
+ArcivPath = PurePath
 
 @dataclass
 class ArchiveHeader:
@@ -35,7 +39,7 @@ class TocFileItem(_ArcivSpecialEncodable):
     """
 
     File: str  # name
-    Path: Union[str, PathLike[str]]
+    Path: PathLike[str]
     Size: int
     Store: Optional[StorageType]
 
@@ -71,7 +75,7 @@ class TocFileItem(_ArcivSpecialEncodable):
 @dataclass
 class TocFolderInfo:
     folder: str  # name
-    path: Union[str, PathLike[str]]
+    path: PathLike[str]
 
 
 @dataclass
@@ -188,3 +192,4 @@ class Arciv(_ArcivSpecialEncodable):
             BraceMessage("Converting {0} to dictionary", self.__class__.__name__)
         )
         return {"Archive": dataclasses.asdict(self)}
+
