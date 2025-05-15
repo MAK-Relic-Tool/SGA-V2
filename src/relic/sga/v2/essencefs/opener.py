@@ -41,6 +41,10 @@ class EssenceFSV2Opener(EssenceFsOpenerPlugin[EssenceFSV2], Opener):
     def protocols(self) -> List[str]:
         return self._PROTOCOLS
 
+    @protocols.setter
+    def protocols(self, protocols: List[str]) -> None:
+        raise RelicToolError("Protocols is read-only")
+
     @property
     def versions(self) -> List[Version]:
         return self._VERSIONS
