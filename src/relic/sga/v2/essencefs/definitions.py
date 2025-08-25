@@ -275,10 +275,9 @@ class SgaPathResolver:
         return cls.split(path)[0]
 
     @classmethod
-    def is_root(cls, path:str) -> bool:
+    def is_root(cls, path: str) -> bool:
         # Should we allow the inverse seperator?
         return path in [cls.SEP, cls.INV_SEP]
-
 
 
 class _SgaFsFileV2:
@@ -1138,7 +1137,7 @@ class _V2TocDisassembler:  # pylint:disable=r0902
         if isinstance(modified, datetime):
             modified = RelicDateTimeSerializer.datetime2unix(modified)
 
-        data_header.modified = modified  # type: ignore
+        data_header.modified = modified
 
         data_header.crc32 = crc32.hash(uncompressed)
 
