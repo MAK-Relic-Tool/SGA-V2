@@ -19,6 +19,8 @@ A non-exhaustive list of Games that use Relic's SGA V2
 - Dawn Of War: Dark Crusade
 - Dawn Of War: Soulstorm
 - Impossible Creatures
+- Dawn Of War: Anniversary Edition
+- Dawn Of War: Definitive Edition
 
 ## Installation (Pip)
 ### Installing from PyPI (Recommended)
@@ -79,7 +81,7 @@ options:
                         Path to a logging config file.
 ```
 ### Verifying Archives
-Checks the MD5 Hashes and/or the SGS File's CRCs
+Checks the MD5 hashes and/or the SGA's file block CRCs
 
 Useful for verifying if file's have been modified or corrupted.
 
