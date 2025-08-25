@@ -21,6 +21,8 @@ A non-exhaustive list of Games that use Relic's SGA V2
 - Impossible Creatures
 - Dawn Of War: Anniversary Edition
 - Dawn Of War: Definitive Edition
+#### File Format Schema
+Check out the [Schema Docs](https://mak-relic-tool.github.io/Schema-Documentation/)
 
 ## Installation (Pip)
 ### Installing from PyPI (Recommended)
