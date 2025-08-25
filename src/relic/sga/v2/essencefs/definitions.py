@@ -274,6 +274,12 @@ class SgaPathResolver:
         logger.debug(BraceMessage("Getting dirname of `{0}`", path))
         return cls.split(path)[0]
 
+    @classmethod
+    def is_root(cls, path:str) -> bool:
+        # Should we allow the inverse seperator?
+        return path in [cls.SEP, cls.INV_SEP]
+
+
 
 class _SgaFsFileV2:
     @property
@@ -2182,8 +2188,14 @@ class EssenceSubFsV2(SubFS[EssenceFS]):
         self._alias, self._sub_dir = SgaPathResolver.parse(path)
 
     def delegate_path(self, path: str) -> Tuple[EssenceFS, str]:
-        # _path = join(self._sub_dir, relpath(normpath(path)))
-        aliased_path = SgaPathResolver.build(self._sub_dir, path, alias=self._alias)
+        # See Issue #71 ~ TLDR:
+        #   SgaPathResolver.build mimics os.path.join;
+        #   which means path (AKA root) will replace sub_dir instead of appending to sub_dir
+        #   We fix here instead of the resolver to avoid breaking things elsewhere
+        if SgaPathResolver.is_root(path):
+            aliased_path = SgaPathResolver.build(self._sub_dir, alias=self._alias)
+        else:
+            aliased_path = SgaPathResolver.build(self._sub_dir, path, alias=self._alias)
         return self._wrap_fs, aliased_path
 
 
