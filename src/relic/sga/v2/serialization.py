@@ -68,8 +68,6 @@ class RelicUnixTimeSerializer:
 
 
 class RelicDateTimeSerializer:
-    LE: Literal["little"] = "little"
-
     @classmethod
     def pack(cls, value: datetime) -> bytes:
         unix_value = cls.datetime2unix(value)
