@@ -3,10 +3,12 @@ from __future__ import annotations
 import datetime
 import logging
 import struct
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Dict, Any, List, TypeVar, Generic, Iterable, Type, Sequence
+from os.path import dirname
+from typing import Dict, Any, List, TypeVar, Generic, Iterable, Type, Sequence, Generator, Callable, Tuple
 
 from relic.core.entrytools import EntrypointRegistry
 from relic.sga.core.definitions import StorageType, Version, MAGIC_WORD
@@ -18,7 +20,7 @@ from relic.sga.core.native.definitions import (
     ReadResult,
     Result,
 )
-from relic.sga.core.native.handler import SharedHeaderParser, NativeParserHandler
+from relic.sga.core.native.handler import SharedHeaderParser, NativeParserHandler, SgaReader
 
 
 @dataclass(slots=True)
@@ -387,8 +389,36 @@ def _read_metadata(reader: ReadonlyMemMapFile, entry: FileEntry) -> FileMetadata
     modified = datetime.datetime.fromtimestamp(unix_timestamp, datetime.timezone.utc)
     return FileMetadata(name, modified, crc32_hash)
 
+_T = TypeVar("_T")
+def walk_entries_as_tree(
+        entries:Sequence[_T],
+        include_drive:bool=True,
+        key_func:Callable[[_T],FileEntry]|None=None) -> Generator[Tuple[str,Sequence[_T]], None, None]:
+    # We can ALMOST cheat by sorting; we just have to sort by directories, not files
+    folders = {}
 
-class NativeMetadataToolV2(ReadonlyMemMapFile):
+    def _key_func(item:_T) -> FileEntry:
+        if isinstance(item, FileEntry):
+            return item
+        raise NotImplementedError
+
+
+
+    if key_func is None:
+        key_func = _key_func
+
+    for item in entries:
+        entry = key_func(item)
+        folder = dirname(entry.full_path(include_drive=include_drive))
+        if folder not in folders:
+            folders[folder] = []
+        folders[folder].append(item)
+
+    for folder, folder_entries in sorted(folders.items(), key=lambda _: _[0]):
+        yield folder, sorted(folder_entries, key=lambda _: key_func(_).name)
+
+
+class SgaVerifierV2(ReadonlyMemMapFile):
     _FILE_MD5_EIGEN = b"E01519D6-2DB7-4640-AF54-0A23319C56C3"
     _TOC_MD5_EIGEN = b"DFC9AF62-FC1B-4180-BC27-11CCE87D3EFF"
 
@@ -412,23 +442,32 @@ class NativeMetadataToolV2(ReadonlyMemMapFile):
 
         return results
 
+
+
+    def calc_crc32(self, entry:FileEntry) -> int:
+        file_data = SgaReader.read_file(self, entry,decompress=True)
+        # file_data = self._read(entry.data_offset, entry.compressed_size)
+        return crc32.hash(file_data)
+
     def verify_file(self, entry: FileEntry, metadata: FileMetadata) -> bool:
-        file_data = self._read(entry.data_offset, entry.compressed_size)
+        file_data = SgaReader.read_file(self, entry,decompress=True)
+        # file_data = self._read(entry.data_offset, entry.compressed_size)
         return crc32.check(file_data, metadata.crc32)
 
     def verify_file_parallel(
-        self, entries: List[FileEntry], metas: List[FileMetadata], num_workers: int
-    ) -> List[Result[FileEntry, bool]]:
-
-        def read(entry: FileEntry, meta: FileMetadata) -> Result[FileEntry, bool]:
+        self, entries: List[FileEntryV2], num_workers: int
+    ) -> List[Result[FileEntryV2, bool]]:
+        def read(entry: FileEntryV2) -> Result[FileEntryV2, bool]:
             try:
-                verified = self.verify_file(entry, meta)
+                verified = self.verify_file(entry, entry.metadata)
                 return Result(entry, verified)
             except Exception as e:
                 return Result.create_error(entry, e)
 
+
+
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
-            results = list(executor.map(read, zip(entries, metas)))
+            results = list(executor.map(read, entries))
 
         return results
 
@@ -462,3 +501,4 @@ class NativeMetadataToolV2(ReadonlyMemMapFile):
         terminal = len(self._mmap_handle)
         buffer = self._read_range(180, terminal)
         return md5.check(buffer, meta.file_md5, eigen=self._FILE_MD5_EIGEN)
+

@@ -1,18 +1,21 @@
 import json
 import logging
+import multiprocessing
 import os
 from argparse import ArgumentParser, Namespace
 from os.path import splitext
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import Optional, Dict, Any
 
 from relic.core.cli import CliPlugin, _SubParsersAction, RelicArgParser, CliPluginGroup
 from relic.core.errors import RelicToolError
 from relic.sga.core.cli import _get_file_type_validator
+from relic.sga.core.native.definitions import Result, FileEntry
 
 from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
 from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
+from relic.sga.v2.native import NativeParserV2, SgaVerifierV2, walk_entries_as_tree, FileEntryV2
 from relic.sga.v2.serialization import SgaV2GameFormat
 from relic.core.logmsg import BraceMessage
 
@@ -265,8 +268,8 @@ class RelicSgaVerifyV2Cli(CliPlugin):
                 )
             verify_files = verify_header = verify_data = True
         elif not any([verify_data, verify_header, verify_files]):
-            if quiet_mode:
-                logger.info("No verification flags specified, assuming '--all' flag")
+            if not quiet_mode:
+                logger.debug("No verification flags specified, assuming '--all' flag")
             verify_files = verify_header = verify_data = True
 
         def get_valid_msg(v: Optional[bool]) -> str:
@@ -276,77 +279,87 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             logger.info("\tVerification Failed!")
             return 1
 
-        with open(sga, "rb") as sga_h:
-            sgafs = EssenceFSV2(
-                sga_h,
-                parse_handle=True,
-                in_memory=False,
-            )
-            if verify_header:
-                try:
-                    header_valid = sgafs.verify_sga_header(True)
-                except RelicToolError as e:
-                    header_valid = False
-                    logger.error(e)
+        with NativeParserV2(sga,logger=logger,read_metadata=True) as parser:
+            files = parser.parse()
+            meta = parser.get_metadata()
+            failures = 0
+            with SgaVerifierV2(sga) as verifier:
+                if verify_header:
+                    try:
+                        header_valid = verifier.verify_toc(meta)
+                    except RelicToolError as e:
+                        header_valid = False
+                        logger.error(e)
 
-                if not quiet_mode or not header_valid:
-                    logger.info(
-                        BraceMessage("SGA Header: {0}", get_valid_msg(header_valid))
-                    )
-                if fail_on_error and not header_valid:
-                    return error_failure()
-
-            if verify_data:
-                try:
-                    data_valid = sgafs.verify_sga_file(True)
-                except RelicToolError as e:
-                    data_valid = False
-                    logger.error(e)
-                if not quiet_mode or not data_valid:
-                    logger.info(
-                        BraceMessage("SGA Data: {0}", get_valid_msg(data_valid))
-                    )
-                if fail_on_error and not data_valid:
-                    return error_failure()
-
-            if verify_files:
-                prev_level = 0
-                for step in sgafs.walk("/"):
-                    nest_level = 0  # only usedf if print_files_as_tree is used
-                    if print_files_as_tree:
-                        parts = SgaPathResolver.split_parts(step.path)
-                        nest_level = max(0, len(parts) - 1)
+                    if not quiet_mode or not header_valid:
                         logger.info(
-                            BraceMessage("{0}`- {1}", " " * nest_level, parts[-1])
+                            BraceMessage("SGA Header: {0}", get_valid_msg(header_valid))
                         )
-                    # print(prev_level, level)
-                    file: Info
-                    for file in step.files:
-                        name = file.name
-                        path = SgaPathResolver.join(step.path, name)
-                        try:
-                            file_valid = sgafs.verify_file_crc(path, True)
-                        except RelicToolError as e:
-                            file_valid = False
-                            logger.error(e)
-                        if not quiet_mode or not file_valid:
-                            if print_files_as_tree:
-                                logger.info(
-                                    BraceMessage(
-                                        "{0}`- {1}: {2}",
-                                        " " * (nest_level + 1),
-                                        name,
-                                        get_valid_msg(file_valid),
-                                    )
-                                )
-                            else:
-                                logger.info(
-                                    BraceMessage(
-                                        "{0}: {1}", path, get_valid_msg(file_valid)
-                                    )
-                                )
-                        if fail_on_error and not file_valid:
-                            return error_failure()
+                        failures += (0 if header_valid else 1)
+                    if fail_on_error and not header_valid:
+                        return error_failure()
 
-            logger.info("\tVerification Passed!")
+                if verify_data:
+                    try:
+                        data_valid = verifier.verify_archive(meta)
+                    except RelicToolError as e:
+                        data_valid = False
+                        logger.error(e)
+                    if not quiet_mode or not data_valid:
+                        logger.info(
+                            BraceMessage("SGA Data: {0}", get_valid_msg(data_valid))
+                        )
+                    if fail_on_error and not data_valid:
+                        return error_failure()
+                    failures += (0 if data_valid else 1)
+
+
+                if verify_files:
+                    if not quiet_mode:
+                        logger.info("SGA Files:")
+                    valid_file_results = verifier.verify_file_parallel(files,num_workers=multiprocessing.cpu_count()-1)
+                    _INCLUDE_DRIVE = True
+                    if print_files_as_tree:
+                        def _key_func(r:Result[FileEntryV2,bool]) -> FileEntryV2:
+                            return r.input
+                        for folder, results in walk_entries_as_tree(valid_file_results,include_drive=_INCLUDE_DRIVE,key_func=_key_func):
+                            parts = PurePath(folder).parts
+                            nest_level = len(parts) - 1 # -1 because parts will always have at least one element
+                            logger.info(
+                                BraceMessage("{0}`- {1}", " " * nest_level, parts[-1])
+                            )
+                            for result in results:
+                                name = result.input.name
+                                for error in result.errors:
+                                    logger.error(error)
+
+                                if not quiet_mode or not result.output:
+                                    logger.info(
+                                        BraceMessage(
+                                            "{0}`- {1}: {2}",
+                                            " " * (nest_level + 1),
+                                            name,
+                                            get_valid_msg(result.output),
+                                        )
+                                    )
+                                if fail_on_error and not result.output:
+                                    return error_failure()
+                    else:
+                        for result in valid_file_results:
+                            if not quiet_mode or not result.output:
+                                logger.info(
+                                    BraceMessage(
+                                        "\t{0}: {1}", result.input.full_path(_INCLUDE_DRIVE),
+                                        get_valid_msg(result.output)
+                                    )
+                                )
+                                if not result.output:
+                                    logger.info(BraceMessage("\t{0}: {3} ~ '{1}' - {2}",result.input.metadata.name, result.input.metadata.crc32,
+                                            result.input.metadata.modified.timestamp(), verifier.calc_crc32(result.input)))
+                            if fail_on_error and not result.output:
+                                return error_failure()
+                    failures += 1 if any(not result.output for result in valid_file_results) else 0
+
+            logger.info("Verification Complete!")
+            logger.info("\t%d Checks Failed",failures)
         return 0
