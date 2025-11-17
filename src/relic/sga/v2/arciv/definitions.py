@@ -14,7 +14,7 @@ from relic.sga.v2.arciv.writer import _ArcivSpecialEncodable
 _module_logger = logging.getLogger(__name__)
 
 
-@dataclass
+@dataclass(slots=True)
 class ArchiveHeader:
     """
     The Archive Header *configuration* located in an '.arciv' file
@@ -28,7 +28,7 @@ class ArchiveHeader:
         return ArchiveHeader("Default Archive Name")
 
 
-@dataclass
+@dataclass(slots=True)
 class TocFileItem(_ArcivSpecialEncodable):
     """
     An item in a TocFolderItem, pe
@@ -68,13 +68,13 @@ class TocFileItem(_ArcivSpecialEncodable):
         return obj
 
 
-@dataclass
+@dataclass(slots=True)
 class TocFolderInfo:
     folder: str  # name
     path: Union[str, PathLike[str]]
 
 
-@dataclass
+@dataclass(slots=True)
 class TocFolderItem:
     Files: List[TocFileItem]
     Folders: List[TocFolderItem]
@@ -93,7 +93,7 @@ class TocFolderItem:
             raise ArcivLayoutError from e
 
 
-@dataclass
+@dataclass(slots=True)
 class TocStorage(_ArcivSpecialEncodable):
     MinSize: int
     MaxSize: int
@@ -120,7 +120,7 @@ class TocStorage(_ArcivSpecialEncodable):
         return obj
 
 
-@dataclass
+@dataclass(slots=True)
 class TocHeader:
     Alias: str
     Name: str
@@ -139,7 +139,7 @@ class TocHeader:
             raise ArcivLayoutError from e
 
 
-@dataclass
+@dataclass(slots=True)
 class TocItem:
     TOCHeader: TocHeader
     RootFolder: TocFolderItem
@@ -155,7 +155,7 @@ class TocItem:
             raise ArcivLayoutError from e
 
 
-@dataclass
+@dataclass(slots=True)
 class Arciv(_ArcivSpecialEncodable):
     """A class-based approximation of the '.arciv' format."""
 
@@ -168,7 +168,7 @@ class Arciv(_ArcivSpecialEncodable):
 
     @classmethod
     def from_parser(cls, d: Dict[str, Any]) -> Arciv:
-        """Converts a parser result to a formatted."""
+        """Converts a parser result to an Arciv object."""
         _module_logger.debug(BraceMessage("Parsing {0} : {1}", cls.__name__, d))
         try:
             root_dict = d["Archive"]
