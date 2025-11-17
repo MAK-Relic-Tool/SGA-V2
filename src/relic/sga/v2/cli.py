@@ -19,7 +19,14 @@ from relic.sga.core.native.definitions import Result
 from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
 from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
-from relic.sga.v2.native import NativeParserV2, SgaVerifierV2, walk_entries_as_tree, FileEntryV2, ArchiveMeta, _T
+from relic.sga.v2.native import (
+    NativeParserV2,
+    SgaVerifierV2,
+    walk_entries_as_tree,
+    FileEntryV2,
+    ArchiveMeta,
+    _T,
+)
 from relic.sga.v2.serialization import SgaV2GameFormat
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
@@ -250,33 +257,31 @@ class RelicSgaVerifyV2Cli(CliPlugin):
         return parser
 
     @staticmethod
-    def _verify_header(sga:str, meta:ArchiveMeta) -> Result[None,bool]:
+    def _verify_header(sga: str, meta: ArchiveMeta) -> Result[None, bool]:
         with SgaVerifierV2(sga) as verifier:
             try:
                 valid = verifier.verify_toc(meta)
-                return Result(None,valid)
+                return Result(None, valid)
             except RelicToolError as e:
                 return Result(None, False, [e])
+
     @staticmethod
-    def _verify_data(sga:str, meta:ArchiveMeta) -> Result[None,bool]:
+    def _verify_data(sga: str, meta: ArchiveMeta) -> Result[None, bool]:
         with SgaVerifierV2(sga) as verifier:
             try:
                 valid = verifier.verify_archive(meta)
-                return Result(None,valid)
+                return Result(None, valid)
             except RelicToolError as e:
                 return Result(None, False, [e])
+
     @staticmethod
-    def _verify_file(sga:str, entry:FileEntryV2) -> Result[FileEntryV2,bool]:
+    def _verify_file(sga: str, entry: FileEntryV2) -> Result[FileEntryV2, bool]:
         with SgaVerifierV2(sga) as verifier:
             try:
                 valid = verifier.verify_file(entry, entry.metadata)
                 return Result(entry, valid)
             except Exception as e:
                 return Result(entry, False, [e])
-
-
-
-
 
     def command(self, ns: Namespace, *, logger: logging.Logger) -> Optional[int]:
         # Extract Args
@@ -307,30 +312,37 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             logger.info("\tVerification Failed!")
             return 1
 
-        with NativeParserV2(sga,logger=logger,read_metadata=True) as parser:
+        with NativeParserV2(sga, logger=logger, read_metadata=True) as parser:
             files = parser.parse()
             meta = parser.get_metadata()
 
         # I know this looks weird BUT
         # for most sga files; verify_data will be the chokepoint
         # This allows verify_header and verify_files to run on separate threads while verify_data chokes
-        with ThreadPoolExecutor(max_workers=multiprocessing.cpu_count()-1) as executor:
-            verify_header_future, verify_data_future, verify_files_futures = None, None, None
+        with ThreadPoolExecutor(
+            max_workers=multiprocessing.cpu_count() - 1
+        ) as executor:
+            verify_header_future, verify_data_future, verify_files_futures = (
+                None,
+                None,
+                None,
+            )
             if verify_header:
-                verify_header_future = executor.submit(self._verify_header,sga, meta)
+                verify_header_future = executor.submit(self._verify_header, sga, meta)
             if verify_data:
-                verify_data_future = executor.submit(self._verify_data,sga,meta)
+                verify_data_future = executor.submit(self._verify_data, sga, meta)
             if verify_files:
-                verify_file_futures = [executor.submit(self._verify_file,sga,entry) for entry in files]
+                verify_file_futures = [
+                    executor.submit(self._verify_file, sga, entry) for entry in files
+                ]
 
-
-            def _wait_all(fs:list[Future[_T]]) -> list[_T]:
+            def _wait_all(fs: list[Future[_T]]) -> list[_T]:
                 return [_.result() for _ in concurrent.futures.as_completed(fs)]
 
-            def _wait(f:Future[_T]) -> _T:
+            def _wait(f: Future[_T]) -> _T:
                 return _wait_all([f])[0]
 
-            def _handle_metadata_future(f:Future[Result[None,bool]], name:str):
+            def _handle_metadata_future(f: Future[Result[None, bool]], name: str):
                 result = _wait(f)
                 header_valid = result.output
                 if result.errors:
@@ -340,23 +352,29 @@ class RelicSgaVerifyV2Cli(CliPlugin):
 
                 if not quiet_mode or not header_valid:
                     logger.info(
-                        BraceMessage("{0}: {1}", name,get_valid_msg(header_valid))
+                        BraceMessage("{0}: {1}", name, get_valid_msg(header_valid))
                     )
                 return header_valid
 
-
-
-            def _handle_files_futures(fs:List[Future[Result[FileEntryV2, bool]]]):
+            def _handle_files_futures(fs: List[Future[Result[FileEntryV2, bool]]]):
                 valid_file_results = _wait_all(fs)
                 if not quiet_mode:
                     logger.info("SGA Files:")
                 _INCLUDE_DRIVE = True
                 if print_files_as_tree:
-                    def _key_func(r:Result[FileEntryV2,bool]) -> FileEntryV2:
+
+                    def _key_func(r: Result[FileEntryV2, bool]) -> FileEntryV2:
                         return r.input
-                    for folder, results in walk_entries_as_tree(valid_file_results,include_drive=_INCLUDE_DRIVE,key_func=_key_func):
+
+                    for folder, results in walk_entries_as_tree(
+                        valid_file_results,
+                        include_drive=_INCLUDE_DRIVE,
+                        key_func=_key_func,
+                    ):
                         parts = PurePath(folder).parts
-                        nest_level = len(parts) - 1 # -1 because parts will always have at least one element
+                        nest_level = (
+                            len(parts) - 1
+                        )  # -1 because parts will always have at least one element
                         logger.info(
                             BraceMessage("{0}`- {1}", " " * nest_level, parts[-1])
                         )
@@ -382,8 +400,9 @@ class RelicSgaVerifyV2Cli(CliPlugin):
                         if not quiet_mode or not result.output:
                             logger.info(
                                 BraceMessage(
-                                    "\t{0}: {1}", result.input.full_path(_INCLUDE_DRIVE),
-                                    get_valid_msg(result.output)
+                                    "\t{0}: {1}",
+                                    result.input.full_path(_INCLUDE_DRIVE),
+                                    get_valid_msg(result.output),
                                 )
                             )
                         if fail_on_error and not result.output:
@@ -395,7 +414,9 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             # Header -> Data -> Files
             valid_header = valid_data = valid_files = True
             if verify_header:
-                valid_header = _handle_metadata_future(verify_header_future, "SGA Header")
+                valid_header = _handle_metadata_future(
+                    verify_header_future, "SGA Header"
+                )
                 if fail_on_error and not valid_header:
                     return error_failure()
 
@@ -409,9 +430,11 @@ class RelicSgaVerifyV2Cli(CliPlugin):
                 if fail_on_error and not valid_files:
                     return error_failure()
 
-            failures = sum(0 if cond else 1 for cond in [valid_files,valid_header,valid_data])
+            failures = sum(
+                0 if cond else 1 for cond in [valid_files, valid_header, valid_data]
+            )
 
             logger.info("Verification Complete!")
             if failures > 0:
-                logger.info("\t%d Checks Failed",failures)
+                logger.info("\t%d Checks Failed", failures)
         return failures

@@ -8,9 +8,22 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from io import BytesIO
 from os.path import dirname
-from typing import Dict, Any, List, TypeVar, Generic, Iterable, Type, Sequence, Generator, Callable, Tuple
+from typing import (
+    Dict,
+    Any,
+    List,
+    TypeVar,
+    Generic,
+    Iterable,
+    Type,
+    Sequence,
+    Generator,
+    Callable,
+    Tuple,
+)
 
 from relic.core.entrytools import EntrypointRegistry
+from relic.core.errors import RelicToolError
 from relic.sga.core.definitions import StorageType, Version, MAGIC_WORD
 from relic.sga.core.errors import VersionNotSupportedError, VersionMismatchError
 from relic.sga.core.hashtools import crc32, md5
@@ -20,7 +33,13 @@ from relic.sga.core.native.definitions import (
     ReadResult,
     Result,
 )
-from relic.sga.core.native.handler import SharedHeaderParser, NativeParserHandler, SgaReader
+from relic.sga.core.native.handler import (
+    SharedHeaderParser,
+    NativeParserHandler,
+    SgaReader,
+)
+
+from relic.sga.v2.serialization import SgaTocFileV2ImpCreatures, SgaV2GameFormat
 
 
 @dataclass(slots=True)
@@ -32,7 +51,8 @@ class FileEntryV2(FileEntry):
 @dataclass(slots=True)
 class TocPointer:
     offset: int
-    count: int
+    count: int  # number of entries
+    size: int | None  # size of partial toc block in bytes
 
 
 @dataclass(slots=True)
@@ -102,40 +122,49 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         if self.logger:
             self.logger.debug(f"[Parser] {msg}")
 
-    def _parse_toc_pair(self, block_index: int) -> TocPointer:
+    def _parse_toc_pair(self, block_index: int, base_offset: int) -> TocPointer:
+        """
+        Parse a single TOC Pointer, getting the absolute offset and entry count.
+        Size is not included, and must be calculated/cached separately
+        """
         s = struct.Struct("<IH")
         buffer = self._read(self._TOC_OFFSET + block_index * s.size, s.size)
         offset, count = s.unpack(buffer)
-        return TocPointer(offset, count)
+        return TocPointer(offset + base_offset, count, None)
 
     def _parse_toc_header(self) -> TocPointers:
-        [drives, folders, files, names] = [self._parse_toc_pair(_) for _ in range(4)]
+        TOC_SIZE = self._meta.toc_size
+        # We cheat and make parse_toc_pair use a relative offset to make logic for calculating size easier
+        (drives, folders, files, names) = ptrs = [
+            self._parse_toc_pair(_, 0) for _ in range(4)
+        ]
 
+        # ensure pointers are ordered IN REVERSE
+        # official packer always has the TOC's data block in drive/folder/files/names order
+        # but other fan packers might not do that
+        # So we sort the TOC Pointers, we sort for safety
+        current_terminal = TOC_SIZE
+        for ptr in sorted(ptrs, key=lambda _: _.offset, reverse=True):
+            # Calculate size
+            ptr.size = current_terminal - ptr.offset
+            current_terminal = ptr.offset
+
+            # Also fix pointer to use absolute offset
+            ptr.offset += self._TOC_OFFSET + TOC_SIZE
+
+        # objects updated in place; no
         return TocPointers(drives, folders, files, names)
 
     def _parse_names(
         self,
-        ptrs: TocPointers,
-        toc_size: int,
+        ptr: TocPointer,
     ) -> Dict[int, str]:
-
-        def determine_buffer_size() -> int:
-            relative_terminal = toc_size
-            if not all(offset < ptrs.name.offset for offset in _non_name_offsets):
-                # Determine *next* offset to determine the size of the buffer
-                relative_terminal = toc_size
-                for offset in _non_name_offsets:
-                    if ptrs.name.offset < offset < relative_terminal:
-                        relative_terminal = offset
-            return relative_terminal - ptrs.name.offset
 
         # Parse string table FIRST (names are stored here!)
         self._log("Parsing string table...")
-        name_base_offset = self._TOC_OFFSET + ptrs.name.offset
-        _non_name_offsets = [ptrs.drive.offset, ptrs.folder.offset, ptrs.file.offset]
+        self.logger.warning(f"Names: {ptr.offset}:{ptr.offset+ptr.size}")
         # well formatted TOC; we can determine the size of the name table using the TOC size (name size is always last)
-        buffer_size = determine_buffer_size()
-        string_table_data = self._read(name_base_offset, buffer_size)
+        string_table_data = self._read(ptr.offset, ptr.size)
         names = {}
         running_index = 0
         for name in string_table_data.split(b"\0"):
@@ -147,11 +176,10 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         # Parse drives (138 bytes each)
         self._log("Parsing drives...")
         drives = []
-        base_offset = self._TOC_OFFSET + ptr.offset
         s = struct.Struct("<64s64s5H")
 
         for drive_index in range(ptr.count):
-            offset = base_offset + drive_index * s.size
+            offset = ptr.offset + drive_index * s.size
             buffer = self._read(offset, s.size)
             (
                 alias,
@@ -190,7 +218,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         # Parse folders (12 bytes each)
         self._log("Parsing folders...")
         folders = []
-        base_offset = self._TOC_OFFSET + ptr.offset
+        base_offset = ptr.offset
         for folder_index in range(ptr.count):
             buffer = self._read(base_offset + folder_index * s.size, s.size)
             # Folder: name_offset(4), subfolder_start(2), subfolder_stop(2), first_file(2), last_file(2)
@@ -214,24 +242,63 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         self,
         ptr: TocPointer,
         string_table: dict[int, str],
+        game: SgaV2GameFormat | None = None,
     ) -> list[dict[str, Any]]:
-        s = struct.Struct("<IIIII")
-        # Parse files (20 bytes each)
+        # File: name_offset(4), flags(dow=4,ic=1), data_offset(4), compressed_size(4), decompressed_size(4)
+        dow_struct = struct.Struct("<5I")
+        ic_struct = struct.Struct("<IB3I")
+
+        def _parse_dow_storge_type(v: int) -> StorageType:
+            # Storage type is in upper nibble of flags
+            # 1/2 is buffer/stream compression;
+            # supposedly they mean different things to the engine; to us, they are the same
+            return StorageType((v & 0xF0) >> 4)
+
+        def _parse_ic_storge_type(v: int) -> StorageType:
+            return StorageType(v)
+
+        def _determine_game_format() -> SgaV2GameFormat:
+            expected_dow_size = dow_struct.size * ptr.count
+            expected_ic_size = ic_struct.size * ptr.count
+
+            if ptr.count == 0:
+                return SgaV2GameFormat.DawnOfWar  # Doesn't matter, no entries
+
+            options = {
+                expected_ic_size: SgaV2GameFormat.ImpossibleCreatures,
+                expected_dow_size: SgaV2GameFormat.DawnOfWar,
+            }
+
+            if ptr.size not in options:
+                raise RelicToolError(
+                    f"Game format could not be determined; expected one of '{list(options.keys())}', received `{ptr.size}."
+                )
+
+            return options[ptr.size]
+
         self._log(f"Parsing {ptr.count} files...")
+
+        if game is None:
+            game = _determine_game_format()
+
+        s: struct.Struct = {
+            SgaV2GameFormat.DawnOfWar: dow_struct,
+            SgaV2GameFormat.ImpossibleCreatures: ic_struct,
+        }[game]
+        parse_storage_type: Callable[[int], StorageType] = {
+            SgaV2GameFormat.DawnOfWar: _parse_dow_storge_type,
+            SgaV2GameFormat.ImpossibleCreatures: _parse_ic_storge_type,
+        }[game]
+
         files = []
-        base_offset = self._TOC_OFFSET + ptr.offset
+        base_offset = ptr.offset
         for file_index in range(ptr.count):
             buffer = self._read(base_offset + file_index * s.size, s.size)
-            # File: name_offset(4), flags(4), data_offset(4), compressed_size(4), decompressed_size(4)
             name_off, flags, data_offset, compressed_size, decompressed_size = s.unpack(
                 buffer
             )
             file_name = string_table[name_off]
-
-            # Storage type is in upper nibble of flags
-            # 1/2 is buffer/stream compression;
-            # supposedly they mean different things to the engine; to us, they are the same
-            storage_type = StorageType((flags & 0xF0) >> 4)
+            storage_type = parse_storage_type(flags)
 
             files.append(
                 {
@@ -254,7 +321,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         with SharedHeaderParser(self._file_path) as subparser:
             subparser.validate_version(Version(2, 0))
 
-    def _parse_header(self) -> None:
+    def _parse_header(self) -> ArchiveMeta:
         # Read header (SGA V2 header is 180 bytes total, TOC starts at 180)
         # The actual offsets are 12 bytes later than documented:
         # toc_size at offset 172, data_pos at offset 176
@@ -272,6 +339,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
 
         self._data_block_start = data_offset
         self._meta = ArchiveMeta(file_hash, archive_name, toc_hash, toc_size)
+        return self._meta
 
     def _parse_sga_binary(self) -> None:  # TODO; move to v2
         """Parse SGA V2 binary format manually."""
@@ -289,7 +357,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
             f" {toc_ptrs.file.count} files, {toc_ptrs.name.count} strings"
         )
 
-        string_table = self._parse_names(toc_ptrs, self._meta.toc_size)
+        string_table = self._parse_names(toc_ptrs.name)
         self._drives = self._parse_drives(toc_ptrs.drive)
         self._folders = self._parse_folders(toc_ptrs.folder, string_table)
         self._files = self._parse_files(toc_ptrs.file, string_table)
@@ -389,20 +457,22 @@ def _read_metadata(reader: ReadonlyMemMapFile, entry: FileEntry) -> FileMetadata
     modified = datetime.datetime.fromtimestamp(unix_timestamp, datetime.timezone.utc)
     return FileMetadata(name, modified, crc32_hash)
 
+
 _T = TypeVar("_T")
+
+
 def walk_entries_as_tree(
-        entries:Sequence[_T],
-        include_drive:bool=True,
-        key_func:Callable[[_T],FileEntry]|None=None) -> Generator[Tuple[str,Sequence[_T]], None, None]:
+    entries: Sequence[_T],
+    include_drive: bool = True,
+    key_func: Callable[[_T], FileEntry] | None = None,
+) -> Generator[Tuple[str, Sequence[_T]], None, None]:
     # We can ALMOST cheat by sorting; we just have to sort by directories, not files
     folders = {}
 
-    def _key_func(item:_T) -> FileEntry:
+    def _key_func(item: _T) -> FileEntry:
         if isinstance(item, FileEntry):
             return item
         raise NotImplementedError
-
-
 
     if key_func is None:
         key_func = _key_func
@@ -442,15 +512,13 @@ class SgaVerifierV2(ReadonlyMemMapFile):
 
         return results
 
-
-
-    def calc_crc32(self, entry:FileEntry) -> int:
-        file_data = SgaReader.read_file(self, entry,decompress=True)
+    def calc_crc32(self, entry: FileEntry) -> int:
+        file_data = SgaReader.read_file(self, entry, decompress=True)
         # file_data = self._read(entry.data_offset, entry.compressed_size)
         return crc32.hash(file_data)
 
     def verify_file(self, entry: FileEntry, metadata: FileMetadata) -> bool:
-        file_data = SgaReader.read_file(self, entry,decompress=True)
+        file_data = SgaReader.read_file(self, entry, decompress=True)
         # file_data = self._read(entry.data_offset, entry.compressed_size)
         return crc32.check(file_data, metadata.crc32)
 
@@ -463,8 +531,6 @@ class SgaVerifierV2(ReadonlyMemMapFile):
                 return Result(entry, verified)
             except Exception as e:
                 return Result.create_error(entry, e)
-
-
 
         with ThreadPoolExecutor(max_workers=num_workers) as executor:
             results = list(executor.map(read, entries))
@@ -501,4 +567,3 @@ class SgaVerifierV2(ReadonlyMemMapFile):
         terminal = len(self._mmap_handle)
         buffer = self._read_range(180, terminal)
         return md5.check(buffer, meta.file_md5, eigen=self._FILE_MD5_EIGEN)
-
