@@ -10,7 +10,7 @@ from relic.sga.core import StorageType, Version
 from relic.sga.core.native.definitions import ReadonlyMemMapFile, FileEntry
 from relic.sga.core.native.handler import NativeParserHandler, SharedHeaderParser
 
-from relic.sga.v2._util import _OmniHandle, OmniHandleAccepts
+from relic.sga.v2._util import _OmniHandle, _OmniHandleAccepts
 from relic.sga.v2.native.models import (
     FileEntryV2,
     ArchiveMeta,
@@ -19,6 +19,14 @@ from relic.sga.v2.native.models import (
     FileMetadata,
 )
 from relic.sga.v2.serialization import SgaV2GameFormat
+
+TOC_PTR = struct.Struct("<IH")
+DRIVE_ENTRY = struct.Struct("<64s64s5H")
+FOLDER_ENTRY = struct.Struct("<IHHHH")
+DOW_FILE_ENTRY = struct.Struct("<5I")
+IC_FILE_ENTRY = struct.Struct("<IB3I")
+ARCHIVE_HEADER = struct.Struct("<16s128s16sII")
+FILE_METADATA = struct.Struct("<256sII")
 
 
 class NativeParserV2(NativeParserHandler[FileEntryV2]):
@@ -38,7 +46,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
 
     def __init__(
         self,
-        sga_path: OmniHandleAccepts,
+        sga_path: _OmniHandleAccepts,
         logger: logging.Logger | None = None,
         read_metadata: bool = False,
     ):
@@ -86,9 +94,8 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         Parse a single TOC Pointer, getting the absolute offset and entry count.
         Size is not included, and must be calculated/cached separately
         """
-        s = struct.Struct("<IH")
-        buffer = self._read(self._TOC_OFFSET + block_index * s.size, s.size)
-        offset, count = s.unpack(buffer)
+        buffer = self._read(self._TOC_OFFSET + block_index * TOC_PTR.size, TOC_PTR.size)
+        offset, count = TOC_PTR.unpack(buffer)
         return TocPointer(offset + base_offset, count, None)
 
     def _parse_toc_header(self) -> TocPointers:
@@ -135,11 +142,10 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         # Parse drives (138 bytes each)
         self._log("Parsing drives...")
         drives = []
-        s = struct.Struct("<64s64s5H")
 
         for drive_index in range(ptr.count):
-            offset = ptr.offset + drive_index * s.size
-            buffer = self._read(offset, s.size)
+            offset = ptr.offset + drive_index * DRIVE_ENTRY.size
+            buffer = self._read(offset, DRIVE_ENTRY.size)
             (
                 alias,
                 name,
@@ -148,7 +154,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
                 first_file,
                 last_file,
                 root_folder,
-            ) = s.unpack(buffer)
+            ) = DRIVE_ENTRY.unpack(buffer)
             # Drive structure: alias(64), name(64), first_folder(2), last_folder(2),
             #                  first_file(2), last_file(2), root_folder(2)
             alias = alias.rstrip(b"\x00").decode("utf-8", errors="ignore")
@@ -173,16 +179,17 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         ptr: TocPointer,
         string_table: dict[int, str],
     ) -> list[dict[str, Any]]:
-        s = struct.Struct("<IHHHH")
         # Parse folders (12 bytes each)
         self._log("Parsing folders...")
         folders = []
         base_offset = ptr.offset
         for folder_index in range(ptr.count):
-            buffer = self._read(base_offset + folder_index * s.size, s.size)
+            buffer = self._read(
+                base_offset + folder_index * FOLDER_ENTRY.size, FOLDER_ENTRY.size
+            )
             # Folder: name_offset(4), subfolder_start(2), subfolder_stop(2), first_file(2), last_file(2)
-            name_off, subfolder_start, subfolder_stop, first_file, last_file = s.unpack(
-                buffer
+            name_off, subfolder_start, subfolder_stop, first_file, last_file = (
+                FOLDER_ENTRY.unpack(buffer)
             )
 
             folder_name = string_table[name_off]
@@ -204,8 +211,6 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         game: SgaV2GameFormat | None = None,
     ) -> list[dict[str, Any]]:
         # File: name_offset(4), flags(dow=4,ic=1), data_offset(4), compressed_size(4), decompressed_size(4)
-        dow_struct = struct.Struct("<5I")
-        ic_struct = struct.Struct("<IB3I")
 
         def _parse_dow_storge_type(v: int) -> StorageType:
             # Storage type is in upper nibble of flags
@@ -217,8 +222,8 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
             return StorageType(v)
 
         def _determine_game_format() -> SgaV2GameFormat:
-            expected_dow_size = dow_struct.size * ptr.count
-            expected_ic_size = ic_struct.size * ptr.count
+            expected_dow_size = DOW_FILE_ENTRY.size * ptr.count
+            expected_ic_size = IC_FILE_ENTRY.size * ptr.count
 
             if ptr.count == 0:
                 return SgaV2GameFormat.DawnOfWar  # Doesn't matter, no entries
@@ -241,8 +246,8 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
             game = _determine_game_format()
         self._meta.game_format = game
         s: struct.Struct = {
-            SgaV2GameFormat.DawnOfWar: dow_struct,
-            SgaV2GameFormat.ImpossibleCreatures: ic_struct,
+            SgaV2GameFormat.DawnOfWar: DOW_FILE_ENTRY,
+            SgaV2GameFormat.ImpossibleCreatures: IC_FILE_ENTRY,
         }[game]
         parse_storage_type: Callable[[int], StorageType] = {
             SgaV2GameFormat.DawnOfWar: _parse_dow_storge_type,
@@ -286,10 +291,9 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         # Read header (SGA V2 header is 180 bytes total, TOC starts at 180)
         # The actual offsets are 12 bytes later than documented:
         # toc_size at offset 172, data_pos at offset 176
-        header_struct = struct.Struct("<16s128s16sII")
         buffer = self._read_range(12, 180)
         file_hash, _archive_name, toc_hash, toc_size, data_offset = (
-            header_struct.unpack(buffer)
+            ARCHIVE_HEADER.unpack(buffer)
         )
         archive_name: str = _archive_name.rstrip(b"\0").decode(
             "utf-16", errors="ignore"
@@ -299,7 +303,14 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         self._log(f"Data starts at offset: {data_offset}")
 
         self._data_block_start = data_offset
-        self._meta = ArchiveMeta(file_hash, archive_name, toc_hash, toc_size, SgaV2GameFormat.Unknown)
+        self._meta = ArchiveMeta(
+            file_hash,
+            archive_name,
+            toc_hash,
+            toc_size,
+            data_offset,
+            SgaV2GameFormat.Unknown,
+        )
         return self._meta
 
     def _parse_sga_binary(self) -> None:  # TODO; move to v2
@@ -406,14 +417,11 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         return self._meta
 
 
-METADATA_STRUCT = struct.Struct("<256sII")
-
-
 def _read_metadata(reader: ReadonlyMemMapFile, entry: FileEntry) -> FileMetadata:
     buffer = reader._read_range(
-        entry.data_offset - METADATA_STRUCT.size, entry.data_offset
+        entry.data_offset - FILE_METADATA.size, entry.data_offset
     )
-    _name, unix_timestamp, crc32_hash = METADATA_STRUCT.unpack(buffer)
+    _name, unix_timestamp, crc32_hash = FILE_METADATA.unpack(buffer)
     name = _name.rstrip(b"\0").decode("utf-8", errors="ignore")
     modified = datetime.datetime.fromtimestamp(unix_timestamp, datetime.timezone.utc)
     return FileMetadata(name, modified, crc32_hash)

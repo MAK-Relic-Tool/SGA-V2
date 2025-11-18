@@ -32,12 +32,13 @@ def _repr_obj(self: Any, *args: str, name: Optional[str] = None, **kwargs: Any) 
     return f"<{klass_name} '{name}'{kwarg_line}>"
 
 
-OmniHandleAccepts: TypeAlias = Union[
-    str , PathLike , int , BinaryIO , bytearray , bytes , mmap.mmap, "_OmniHandle"]
+_OmniHandleAccepts: TypeAlias = Union[
+    str, PathLike, int, BinaryIO, bytearray, bytes, mmap.mmap, "_OmniHandle"
+]
 
 
 class _OmniHandle:
-    def __init__(self, handle: OmniHandleAccepts, close_handle: bool = False):
+    def __init__(self, handle: _OmniHandleAccepts, close_handle: bool = False):
         self._path: str = None
         self._file_descriptor: int = None
         self._close_file_descriptor: bool = False
@@ -68,7 +69,7 @@ class _OmniHandle:
             self._file_descriptor = handle
             self._close_file_descriptor = close_handle
         elif isinstance(handle, (bytearray, bytes)):  # raw
-            self._raw = bytes(handle) # ensure handle's internal data cant change
+            self._raw = bytes(handle)  # ensure handle's internal data cant change
         elif isinstance(handle, BinaryIO):  # python
             self._handle = handle  # assign handle so we can close
             self._close_handle = close_handle
@@ -85,9 +86,12 @@ class _OmniHandle:
         else:
             raise NotImplementedError(handle.__class__)
 
-        #_path, _file_descriptor, _mmap_handle, _raw all allow parallel reads (because they don't have state)
+        # _path, _file_descriptor, _mmap_handle, _raw all allow parallel reads (because they don't have state)
         # really, only _handle CANT parallel_read, unless we load stream into memory
-        self._allow_parallel_read = any(v is not None for v in [self._path, self._file_descriptor, self._mmap_handle, self._raw])
+        self._allow_parallel_read = any(
+            v is not None
+            for v in [self._path, self._file_descriptor, self._mmap_handle, self._raw]
+        )
 
     def safe_handle(self) -> "_OmniHandle":
         if self._path is not None:

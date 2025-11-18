@@ -3,15 +3,16 @@ import io
 import itertools
 import logging
 import zlib
+from collections.abc import dict_values
 from dataclasses import dataclass
 from os import PathLike
 from pathlib import PureWindowsPath
-from typing import BinaryIO, Sequence, Any
+from typing import BinaryIO, Sequence, Any, Tuple, Generator
 
 from fsspec import AbstractFileSystem
 from relic.sga.core import StorageType
 
-from relic.sga.v2._util import _OmniHandle
+from relic.sga.v2._util import _OmniHandle, _OmniHandleAccepts
 from relic.sga.v2.native.models import FileEntryV2
 from relic.sga.v2.native.parser import NativeParserV2
 
@@ -41,6 +42,7 @@ class _Directory(_Node):
     sub_folders: dict[str, "_Directory"]
     files: dict[str, "_File"]
     absolute_path: str
+    alias: str | None = None  # for root folders
 
     def child(self, name: str) -> "_Directory|_File|None":
         return self.sub_folders.get(name, self.files.get(name))
@@ -61,7 +63,10 @@ class _Directory(_Node):
 
     def info(self, details: bool = False) -> dict[str, Any] | str:
         if details:
-            return {"name": self.absolute_path, "size": 0, "type": "directory"}
+            v = {"name": self.absolute_path, "size": 0, "type": "directory"}
+            if self.alias is not None:
+                v["alias"] = self.alias
+            return v
         else:
             return self.absolute_path
 
@@ -218,11 +223,11 @@ class SgaV2(AbstractFileSystem):
 
     def __init__(
         self,
-        handle: str | PathLike | int | BinaryIO | bytearray | bytes,
+        handle: _OmniHandleAccepts | None = None,
         parse: bool = True,
     ):
         super().__init__()
-        self._handle = _OmniHandle(handle)
+        self._handle = _OmniHandle(handle) if handle is not None else None
         self._root: _Directory = _Directory("", {}, {}, "")
         self._should_parse = parse
         self._parse()
@@ -237,6 +242,35 @@ class SgaV2(AbstractFileSystem):
 
         self._should_parse = False
 
+    def _walk_from_node(
+        self, node: _Directory
+    ) -> Generator[tuple[_Directory, Sequence[_Directory], Sequence[_File]]]:
+        subfolders = list(node.sub_folders.values())
+        yield node, subfolders, list(node.files.values())
+        for folder in subfolders:
+            yield from self._walk_from_node(folder)
+
+    def _walk_from_path(self, root: str | None = None):
+        if root is not None:
+            root_node, _ = self._resolve_node(
+                self._parts(root), resolve_to_parent=False
+            )
+        else:
+            root_node = self._root
+        return self._walk_from_node(root_node)
+
+    def _unlazy(self):
+        with self._handle as reader:
+            for _, _, file_nodes in self._walk_from_path():
+                for file in file_nodes:
+                    if file._lazy is None:
+                        continue
+                    data = _read_omni(reader, file._lazy)
+                    file._unlazy(data)
+
+        self._handle.close()
+        self._handle = None
+
     @staticmethod
     def _parts(path: str):
         return PureWindowsPath(path.lstrip("\\").lstrip("//")).parts
@@ -246,14 +280,14 @@ class SgaV2(AbstractFileSystem):
         return [str(parent) for parent in PureWindowsPath(*parts).parents]
 
     def _resolve_node(
-        self, steps: Sequence[str], resolve_parent: bool = True
+        self, steps: Sequence[str], resolve_to_parent: bool = True
     ) -> tuple[_Directory, str]:
         cur_dir = self._root
         child = None
         if len(steps) == 0:
             return cur_dir, ""
 
-        if resolve_parent:
+        if resolve_to_parent:
             child = steps[-1]
             steps = steps[:-1]
         for step in steps:
@@ -288,7 +322,7 @@ class SgaV2(AbstractFileSystem):
         if create_parents:
             parent_dir = self._mkdir(parent_steps, True)
         else:
-            parent_dir, _ = self._resolve_node(parent_steps, resolve_parent=False)
+            parent_dir, _ = self._resolve_node(parent_steps, resolve_to_parent=False)
         created = _File(
             child_step, None, None, path, entry, b"" if entry is not None else None
         )
@@ -327,16 +361,22 @@ class SgaV2(AbstractFileSystem):
         """Return raw bytes-mode file-like from the file-system"""
         if is_writing:
             parent, child_name = self._resolve_node(
-                self._parts(path), resolve_parent=True
+                self._parts(path), resolve_to_parent=True
             )
             child = parent.child(child_name)
             if child is None:
                 child = parent.files[child_name] = _File(
-                    child_name, datetime.datetime.now(), None, path, None, b"", StorageType.STORE
+                    child_name,
+                    datetime.datetime.now(),
+                    None,
+                    path,
+                    None,
+                    b"",
+                    StorageType.STORE,
                 )
             return _WriteFile(child, self._handle.safe_handle())
         else:
-            child, _ = self._resolve_node(self._parts(path), resolve_parent=False)
+            child, _ = self._resolve_node(self._parts(path), resolve_to_parent=False)
             if child is None:
                 raise FileNotFoundError(path)
             return _ReadOnlyFile(child, self._handle.safe_handle())
@@ -372,21 +412,25 @@ class SgaV2(AbstractFileSystem):
             )
 
     def ls(self, path, detail=True, **kwargs):
-        node, _ = self._resolve_node(self._parts(path), resolve_parent=False)
+        node, _ = self._resolve_node(self._parts(path), resolve_to_parent=False)
         return [
             f.info(details=detail)
-            for f in itertools.chain[_Node](node.sub_folders.values(), node.files.values())
+            for f in itertools.chain[_Node](
+                node.sub_folders.values(), node.files.values()
+            )
         ]
 
     def info(self, path, **kwargs):
-        node, _ = self._resolve_node(self._parts(path), resolve_parent=False)
+        node, _ = self._resolve_node(self._parts(path), resolve_to_parent=False)
         if node is None:
             raise FileNotFoundError(path)
         return node.info(details=True)
 
     def _rm(self, path):
         try:
-            parent, child = self._resolve_node(self._parts(path), resolve_parent=True)
+            parent, child = self._resolve_node(
+                self._parts(path), resolve_to_parent=True
+            )
         except FileNotFoundError:
             return
         if parent is None:
@@ -394,10 +438,12 @@ class SgaV2(AbstractFileSystem):
             return
         parent.rm(child)
 
+    def _iter_drives(self) -> Generator[_Directory, None, None]:
+        yield from self._root.sub_folders.values()
+
 
 if __name__ == "__main__":
-    fs = SgaV2(
-    )
+    fs = SgaV2()
     print(list(fs.walk("/")))
     fs.mkdir("/remote/output", create_parents=True)
     fs.touch("/remote/output/success")  # creates empty file

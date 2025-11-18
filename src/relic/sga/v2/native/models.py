@@ -20,6 +20,10 @@ class TocPointer:
     count: int  # number of entries
     size: int | None  # size of partial toc block in bytes
 
+    @classmethod
+    def default(cls) -> TocPointer:
+        return cls(0, 0, None)
+
 
 @dataclass(slots=True)
 class TocPointers:
@@ -28,6 +32,10 @@ class TocPointers:
     file: TocPointer
     name: TocPointer
 
+    @classmethod
+    def default(cls):
+        return TocPointers(*[TocPointer.default() for _ in range(4)])
+
 
 @dataclass(slots=True)
 class ArchiveMeta:
@@ -35,7 +43,14 @@ class ArchiveMeta:
     name: str
     toc_md5: bytes
     toc_size: int
-    game_format:SgaV2GameFormat
+    data_offset: int
+    game_format: SgaV2GameFormat = SgaV2GameFormat.Unknown
+
+    @classmethod
+    def default(cls):
+        return ArchiveMeta(
+            b"\0" * 16, "", b"\0" * 16, 0, 0, game_format=SgaV2GameFormat.Unknown
+        )
 
 
 @dataclass(slots=True)
