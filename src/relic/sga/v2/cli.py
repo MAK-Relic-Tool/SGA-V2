@@ -20,13 +20,13 @@ from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
 from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
 from relic.sga.v2.native import (
-    NativeParserV2,
     SgaVerifierV2,
     walk_entries_as_tree,
     FileEntryV2,
     ArchiveMeta,
     _T,
 )
+from relic.sga.v2.native.parser import NativeParserV2
 from relic.sga.v2.serialization import SgaV2GameFormat
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
@@ -435,6 +435,5 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             )
 
             logger.info("Verification Complete!")
-            if failures > 0:
-                logger.info("\t%d Checks Failed", failures)
+            logger.info("\t%d Checks Failed", failures)
         return failures
