@@ -91,7 +91,7 @@ class FsSpecWriter(_SgaWriter[SgaFsSpec]):
     def _add_fs_drive(self, drive: _Directory, game_format: SgaV2GameFormat):
 
         # Write all names to init cache & to mimic modpackager's name layout
-        self._add_fs_names(drive)
+        self._add_fs_names(drive,drive)
         # Collect known arguments
         name = drive.name
         alias = drive.alias
