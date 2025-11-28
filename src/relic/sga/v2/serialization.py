@@ -665,7 +665,7 @@ class SgaFileV2(SgaFile):
         cache_name: str,
     ) -> bool:
         if (
-            self._serializer.stream.writable()
+            self._serializer.stream._autosave()
             or error  # we can't use the cache if we want to error
             or not cached
             or not hasattr(self, cache_name)

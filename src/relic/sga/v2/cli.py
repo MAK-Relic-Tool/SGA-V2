@@ -322,7 +322,7 @@ class RelicSgaVerifyV2Cli(CliPlugin):
         with ThreadPoolExecutor(
             max_workers=multiprocessing.cpu_count() - 1
         ) as executor:
-            verify_header_future, verify_data_future, verify_files_futures = (
+            verify_header_future, verify_data_future, verify_file_futures = (
                 None,
                 None,
                 None,

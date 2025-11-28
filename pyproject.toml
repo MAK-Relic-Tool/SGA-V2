@@ -20,7 +20,7 @@ name = "relic-tool-sga-v2"
 requires-python = ">=3.9"
 
 [project.optional-dependencies]
-pyfilesystem2 = ["pyfilesystem2"] # depricate pyfilesystem
+pyfilesystem2 = ["pyfilesystem2"] # depricate pyfilesystem by making it an optional dependency
 fsspec = ["fsspec"]
 
 

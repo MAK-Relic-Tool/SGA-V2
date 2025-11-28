@@ -30,3 +30,4 @@ src/relic/sga/v2/arciv/parsetab.py
 /prof
 src/relic/sga/v2/sgaconfig/parser.out
 src/relic/sga/v2/sgaconfig/parsetab.py
+/tests/profiling/**/*.sga

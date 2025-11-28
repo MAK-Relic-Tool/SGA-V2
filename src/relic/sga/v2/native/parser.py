@@ -3,9 +3,11 @@ from __future__ import annotations
 import datetime
 import logging
 import struct
-from typing import Any, Dict, Callable
+from os import PathLike
+from typing import Any, Dict, Callable, BinaryIO
 
 from relic.core.errors import RelicToolError, MismatchError
+from relic.core.logmsg import BraceMessage
 from relic.sga.core import StorageType, Version
 from relic.sga.core.native.definitions import ReadonlyMemMapFile, FileEntry
 from relic.sga.core.native.handler import NativeParserHandler, SharedHeaderParser
@@ -46,9 +48,10 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
 
     def __init__(
         self,
-        sga_path: _OmniHandleAccepts,
+        sga_path: str|PathLike[str]|BinaryIO,
         logger: logging.Logger | None = None,
-        read_metadata: bool = False,
+        read_metadata: bool = True,
+        prefer_drive_alias:bool=False
     ):
         """Parse SGA file.
 
@@ -56,9 +59,10 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
             sga_path: Path to SGA archive
             logger:
         """
-        # super().__init__(sga_path) # dont create
-        self._handle = _OmniHandle(sga_path)
+        super().__init__(sga_path) # dont create
+
         self.logger = logger or logging.getLogger(__name__)
+        self.logger.setLevel(logging.DEBUG) # HACK; TODO remove
         self._files: list[dict[str, Any]] = []
         self._folders: list[dict[str, Any]] = []
         self._drives: list[dict[str, Any]] = []
@@ -68,21 +72,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         self._parsed = False
         self._meta: ArchiveMeta = None  # type: ignore
         self.read_metadata = read_metadata
-
-    def open(self):
-        self._handle.open()
-
-    def close(self):
-        self._handle.close()
-
-    def _read(self, offset: int, size: int) -> bytes:
-        buffer = self._handle[offset : offset + size]
-        if len(buffer) != size:
-            raise MismatchError("Read", size, len(buffer))
-        return buffer
-
-    def _read_range(self, offset: int, terminal: int) -> bytes:
-        return self._read(offset, terminal - offset)
+        self.prefer_drive_alias = prefer_drive_alias
 
     def _log(self, msg: str) -> None:  # TODO; use logger directly and use BraceMessages
         """Log if verbose."""
@@ -99,6 +89,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         return TocPointer(offset + base_offset, count, None)
 
     def _parse_toc_header(self) -> TocPointers:
+        self.logger.debug("Parsing Table Of Contents Header")
         TOC_SIZE = self._meta.toc_size
         # We cheat and make parse_toc_pair use a relative offset to make logic for calculating size easier
         (drives, folders, files, names) = ptrs = [
@@ -118,6 +109,18 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
             # Also fix pointer to use absolute offset
             ptr.offset += self._TOC_OFFSET
 
+        def _log(name:str,_ptr:TocPointer):
+            self.logger.debug(BraceMessage("{name}: (offset={offset}, count={count}, size={size}B)",
+                              name=name,
+                                           offset=_ptr.offset,
+                                           size=_ptr.size,
+                                           count=_ptr.count))
+
+        _log("Drives",drives)
+        _log("Folders",folders)
+        _log("Files",files)
+        _log("Names",names)
+
         # objects updated in place; no
         return TocPointers(drives, folders, files, names)
 
@@ -127,20 +130,20 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
     ) -> Dict[int, str]:
 
         # Parse string table FIRST (names are stored here!)
-        self._log("Parsing string table...")
-        self.logger.warning(f"Names: {ptr.offset}:{ptr.offset+ptr.size}")
+        self.logger.debug("Parsing string table...")
         # well formatted TOC; we can determine the size of the name table using the TOC size (name size is always last)
         string_table_data = self._read(ptr.offset, ptr.size)
         names = {}
         running_index = 0
-        for name in string_table_data.split(b"\0"):
-            names[running_index] = name.decode("utf-8")
+        for i, name in enumerate(string_table_data.split(b"\0")):
+            safe_name = names[running_index] = name.decode("utf-8")
+            self.logger.debug(BraceMessage("Name[{i}] @{running_index} = {name}", i=i, running_index=running_index,name=safe_name))
             running_index += len(name) + 1
         return names
 
     def _parse_drives(self, ptr: TocPointer) -> list[dict[str, Any]]:
         # Parse drives (138 bytes each)
-        self._log("Parsing drives...")
+        self.logger.debug("Parsing drives...")
         drives = []
 
         for drive_index in range(ptr.count):
@@ -171,7 +174,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
                     "last_file": last_file,
                 }
             )
-            self._log(f"  Drive: {name} (root folder: {root_folder})")
+            self.logger.debug(f"Drive: {name} (root_folder= {root_folder}, folders=[{first_folder}, {last_folder}], files=[{first_file}, files={last_file}])")
         return drives
 
     def _parse_folders(
@@ -180,17 +183,27 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         string_table: dict[int, str],
     ) -> list[dict[str, Any]]:
         # Parse folders (12 bytes each)
-        self._log("Parsing folders...")
+        self.logger.debug("Parsing folders...")
         folders = []
         base_offset = ptr.offset
         for folder_index in range(ptr.count):
+            offset = base_offset + folder_index * FOLDER_ENTRY.size
+            self.logger.debug(f"Reading folder[{folder_index}] @{offset}")
             buffer = self._read(
-                base_offset + folder_index * FOLDER_ENTRY.size, FOLDER_ENTRY.size
+                offset, FOLDER_ENTRY.size
             )
             # Folder: name_offset(4), subfolder_start(2), subfolder_stop(2), first_file(2), last_file(2)
             name_off, subfolder_start, subfolder_stop, first_file, last_file = (
                 FOLDER_ENTRY.unpack(buffer)
             )
+            self.logger.debug(f"Folder[{folder_index}]: (name_offset={name_off}, subfolder_start={subfolder_start}, subfolder_stop={subfolder_stop}, first_file={first_file}, last_file={last_file})")
+            if name_off not in string_table:
+                self.logger.error(
+                    BraceMessage("Cannot find name in name table @{name_off}",name_off=name_off)
+                )
+                DELTA = 256 * 2 # meta max size is 256, assume we must be in that range
+                _VIEW = {n:v for n,v in string_table.items() if name_off - DELTA <= n <= name_off + DELTA}
+                self.logger.error(string_table if len(_VIEW) == 0 else _VIEW)
 
             folder_name = string_table[name_off]
             folders.append(
@@ -240,11 +253,12 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
 
             return options[ptr.size]
 
-        self._log(f"Parsing {ptr.count} files...")
+        self.logger.debug(f"Parsing {ptr.count} files...")
 
         if game is None:
             game = _determine_game_format()
         self._meta.game_format = game
+        self.logger.debug(f"Using game format: {game}")
         s: struct.Struct = {
             SgaV2GameFormat.DawnOfWar: DOW_FILE_ENTRY,
             SgaV2GameFormat.ImpossibleCreatures: IC_FILE_ENTRY,
@@ -257,7 +271,9 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         files = []
         base_offset = ptr.offset
         for file_index in range(ptr.count):
-            buffer = self._read(base_offset + file_index * s.size, s.size)
+            offset = base_offset + file_index * s.size
+            self.logger.debug(f"Reading file[{file_index}] @{offset}")
+            buffer = self._read(offset, s.size)
             name_off, flags, data_offset, compressed_size, decompressed_size = s.unpack(
                 buffer
             )
@@ -276,13 +292,19 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
 
             if file_index < 5:  # Debug first 5
                 self._log(
-                    f"  File[{file_index}]: {file_name}, offset={data_offset},"
+                    f" File[{file_index}]: {file_name}, offset={data_offset},"
                     f" comp={compressed_size}, decomp={decompressed_size}, type={storage_type}"
                 )
         return files
 
     def _parse_magic_and_version(self) -> None:
         # hack
+        self.logger.debug("Parsing Magic")
+        NativeParserV2.read_magic = SharedHeaderParser.read_magic
+        SharedHeaderParser.validate_magic(self)
+        del NativeParserV2.read_magic
+
+        self.logger.debug("Parsing Version")
         NativeParserV2.read_version = SharedHeaderParser.read_version
         SharedHeaderParser.validate_version(self, Version(2, 0))
         del NativeParserV2.read_version
@@ -292,6 +314,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         # The actual offsets are 12 bytes later than documented:
         # toc_size at offset 172, data_pos at offset 176
         buffer = self._read_range(12, 180)
+        self.logger.debug("Parsing Header")
         file_hash, _archive_name, toc_hash, toc_size, data_offset = (
             ARCHIVE_HEADER.unpack(buffer)
         )
@@ -299,9 +322,12 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
             "utf-16", errors="ignore"
         )
 
-        self._log(f"TOC size: {toc_size} bytes")
-        self._log(f"Data starts at offset: {data_offset}")
-
+        self.logger.debug(BraceMessage("Header(file_hash={file_hash}, archive_name={archive_name}, toc_hash={toc_hash}, toc_size={toc_size}, data_offset={data_offset})",
+                                       file_hash=file_hash,
+                                       archive_name=archive_name,
+                                       toc_hash=toc_hash,
+                                       toc_size=toc_size,
+                                       data_offset=data_offset))
         self._data_block_start = data_offset
         self._meta = ArchiveMeta(
             file_hash,
@@ -315,7 +341,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
 
     def _parse_sga_binary(self) -> None:  # TODO; move to v2
         """Parse SGA V2 binary format manually."""
-        self._log(f"Opening {self._handle._path if self._handle._path else ''}...")
+        self._log(f"Opening {self._handle}")
         self._parse_magic_and_version()
         self._parse_header()
 
@@ -338,7 +364,12 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         self._log("Building file map...")
         self._log(f"Data block starts at offset: {self._data_block_start}")
         for drive in self._drives:
-            drive_name = drive["name"]
+
+            # an interesting problem; name is correct with .sgaconfig
+            #   but alias makes merging directories easy
+            #   we also *usually* don't want the name when creating an abstract fs but the alias
+            #       E.G. a game engine doesn't care that the drive is 'w40k-whm-assets' but that it's 'data'
+            drive_name = drive["alias"] if self.prefer_drive_alias else drive["name"]
             self._build_file_paths(drive["root_folder"], drive_name, "")
 
         if self.read_metadata:
@@ -363,9 +394,9 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         """Recursively build full file paths."""
         if folder_idx >= len(self._folders):
             return
-
         folder = self._folders[folder_idx]
         folder_name = folder["name"]
+        self.logger.debug(f"Building Folder[{folder_idx}] (files=[{folder['first_file']}, {folder['last_file']}], folders=[{folder['subfolder_start']}, {folder['subfolder_stop']}])")
 
         # Normalize folder name (remove backslashes)
         folder_name = folder_name.replace("\\", "/")
@@ -375,6 +406,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         full_folder_path = folder_name if folder_name else current_path
 
         # Add files in this folder
+
         for file_idx in range(folder["first_file"], folder["last_file"]):
             if file_idx < len(self._files):
                 file = self._files[file_idx]
@@ -402,8 +434,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
 
     def parse(self) -> list[FileEntryV2]:
         if not self._parsed:
-            with self._handle:  # ensure we are open
-                self._parse_sga_binary()
+            self._parse_sga_binary()
 
         return self.get_file_entries()
 

@@ -38,7 +38,7 @@ _OmniHandleAccepts: TypeAlias = Union[
 
 
 class _OmniHandle:
-    def __init__(self, handle: _OmniHandleAccepts, close_handle: bool = False):
+    def __init__(self, handle: _OmniHandleAccepts, close_handle: bool = False, writable: bool=False):
         self._path: str = None
         self._file_descriptor: int = None
         self._close_file_descriptor: bool = False
@@ -48,6 +48,8 @@ class _OmniHandle:
         self._mmap_handle: mmap.mmap = None  # always close mmap
         self._close_mmap = False
         self._allow_parallel_read: bool = False
+        self._writable: bool = writable # MAY be overriden depending on the handle type
+        self._allow_writable: bool = writable # whether we can make a write handle
         # We dont have an allow_parallel_write, because A) omnihandle is designed for reading and B) i don't think we can EVER parallel write to the same pyobject
 
         # This is fugly; but it works
@@ -61,15 +63,21 @@ class _OmniHandle:
             self._mmap_handle = handle._mmap_handle
             self._close_mmap = handle._close_mmap
             self._allow_parallel_read = handle._allow_parallel_read
+            self._writable = handle._writable
+            self._allow_writable = handle._allow_writable
         elif isinstance(handle, str):  # path
             self._path = handle
+            self._allow_writable = True # path is ALWAYS writable
         elif isinstance(handle, PathLike):
             self._path = handle.__fspath__()
+            self._allow_writable = True # path is ALWAYS writable
         elif isinstance(handle, int):  # fileno
             self._file_descriptor = handle
             self._close_file_descriptor = close_handle
+            # we have to trust the passed in argument
         elif isinstance(handle, (bytearray, bytes)):  # raw
             self._raw = bytes(handle)  # ensure handle's internal data cant change
+            self._allow_writable = False # ABSOLUTELY NOT WRITABLE
         elif isinstance(handle, BinaryIO):  # python
             self._handle = handle  # assign handle so we can close
             self._close_handle = close_handle
@@ -80,9 +88,12 @@ class _OmniHandle:
                     "failed to get file descriptor from BinaryIO, using python's abstraction"
                 )
                 raise NotImplementedError  # Dont want to worry about this edge case
+            # BinaryIO is actually our least supported handle type;
+            # todo handle writable
         elif isinstance(handle, mmap.mmap):
             self._close_mmap = close_handle
             self._mmap_handle = handle
+            # have to trust backend, mmap's underyling data might not be writable
         else:
             raise NotImplementedError(handle.__class__)
 
@@ -93,33 +104,46 @@ class _OmniHandle:
             for v in [self._path, self._file_descriptor, self._mmap_handle, self._raw]
         )
 
-    def safe_handle(self) -> "_OmniHandle":
+    def _make_handle(self, writable:bool):
         if self._path is not None:
-            return _OmniHandle(self._path)
+            return _OmniHandle(self._path,writable=writable)
         elif self._mmap_handle is not None:
-            return _OmniHandle(self._mmap_handle)
+            return _OmniHandle(self._mmap_handle,writable=writable)
         elif self._file_descriptor is not None:
-            return _OmniHandle(self._file_descriptor)
+            return _OmniHandle(self._file_descriptor,writable=writable)
         elif self._raw is not None:
-            return _OmniHandle(self._raw)
+            return _OmniHandle(self._raw,writable=writable)
         elif self._handle is not None:  # THE WORST CASE
             self._raw = self._handle.read()
-            return _OmniHandle(self._raw)
-
+            return _OmniHandle(self._raw,writable=writable)
         raise NotImplementedError
 
-    def open(self):
+
+    def read_handle(self) -> "_OmniHandle":
+        return self._make_handle(False)
+
+    def write_handle(self) -> "_OmniHandle":
+        if not self._allow_writable:
+            raise TypeError("The given handle is not writable")
+        return self._make_handle(True)
+
+    def open(self) -> "_OmniHandle":
         if self._path is not None and self._file_descriptor is None:
             self._file_descriptor = os.open(
-                self._path, os.O_RDWR | getattr(os, "O_BINARY", 0)
+                self._path, os.O_RDONLY | getattr(os, "O_BINARY", 0)
             )
             self._close_file_descriptor = True
 
         if self._file_descriptor is not None and self._mmap_handle is None:
-            self._mmap_handle = mmap.mmap(
-                self._file_descriptor, 0
-            )  # TODO handle empty mmap failure on windows (its a special case)
+            try:
+                self._mmap_handle = mmap.mmap(
+                    self._file_descriptor, 0
+                )  # TODO handle empty mmap failure on windows (its a special case)
+            except PermissionError as e:
+                print(self._path, e)
+                pass
             self._close_mmap = True
+
 
     def close(self):
         if self._close_file_descriptor and self._file_descriptor is not None:
@@ -162,7 +186,7 @@ class _OmniHandle:
                 self._handle.seek(item)
                 return self._handle.read(1)
         else:
-            raise NotImplementedError
+            raise NotImplementedError(self._path)
 
     def __setitem__(self, item, value):
         if self._mmap_handle is not None:

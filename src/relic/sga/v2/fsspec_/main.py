@@ -3,7 +3,6 @@ import io
 import itertools
 import logging
 import zlib
-from collections.abc import dict_values
 from dataclasses import dataclass
 from os import PathLike
 from pathlib import PureWindowsPath
@@ -11,6 +10,7 @@ from typing import BinaryIO, Sequence, Any, Tuple, Generator
 
 from fsspec import AbstractFileSystem
 from relic.sga.core import StorageType
+from relic.sga.core.native.definitions import ReadonlyMemMapFile
 
 from relic.sga.v2._util import _OmniHandle, _OmniHandleAccepts
 from relic.sga.v2.native.models import FileEntryV2
@@ -42,7 +42,7 @@ class _Directory(_Node):
     sub_folders: dict[str, "_Directory"]
     files: dict[str, "_File"]
     absolute_path: str
-    alias: str | None = None  # for root folders
+    drive_name: str | None = None  # for root folders
 
     def child(self, name: str) -> "_Directory|_File|None":
         return self.sub_folders.get(name, self.files.get(name))
@@ -64,8 +64,8 @@ class _Directory(_Node):
     def info(self, details: bool = False) -> dict[str, Any] | str:
         if details:
             v = {"name": self.absolute_path, "size": 0, "type": "directory"}
-            if self.alias is not None:
-                v["alias"] = self.alias
+            if self.drive_name is not None:
+                v["drive_name"] = self.drive_name
             return v
         else:
             return self.absolute_path
@@ -133,8 +133,11 @@ class _File(_Node):
         pass  # we dont store file handles here *_*
 
 
-def _read_omni(handle: _OmniHandle, entry: FileEntryV2):
-    raw = handle[entry.data_offset : entry.data_offset + entry.compressed_size]
+def _read_omni(handle: _OmniHandle|ReadonlyMemMapFile, entry: FileEntryV2):
+    if isinstance(handle, ReadonlyMemMapFile):
+        raw = handle._read(entry.data_offset,entry.compressed_size)
+    else:
+        raw = handle[entry.data_offset : entry.data_offset + entry.compressed_size]
     if entry.storage_type != StorageType.STORE:
         return zlib.decompress(raw)
     return raw
@@ -223,19 +226,46 @@ class SgaV2(AbstractFileSystem):
 
     def __init__(
         self,
-        handle: _OmniHandleAccepts | None = None,
+        handle: str|PathLike[str]|BinaryIO| None = None,
         parse: bool = True,
+        autosave:bool = True,
     ):
         super().__init__()
-        self._handle = _OmniHandle(handle) if handle is not None else None
+        self._handle = handle
         self._root: _Directory = _Directory("", {}, {}, "")
         self._should_parse = parse
         self._parse()
+        self._was_modified = False
+        self._autosave = autosave
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self._autosave and self._was_modified:
+            self.save(self._handle)
+
+    def save(self, handle: str|PathLike[str]|BinaryIO = None):
+        from relic.sga.v2.fsspec_.serializer import FsSpecWriter
+        if handle is None:
+            handle = self._handle
+            handle.seek(0)
+
+        with FsSpecWriter(self) as writer:
+            writer.write(handle, self._meta.name)
 
     def _parse(self):
         if self._should_parse:
-            with NativeParserV2(self._handle.safe_handle()) as parser:
-                for file in parser.parse():
+            with NativeParserV2(self._handle,prefer_drive_alias=True,read_metadata=True) as parser:
+                parser.parse()
+
+
+                for drive in parser._drives:
+                    self._root.sub_folders[drive["alias"]] = _Directory(drive["alias"],{},{},drive["alias"], drive_name=drive["name"])
+                entries = parser.get_file_entries()
+                logger.info(f"Parsed {len(entries)} entries")
+                logger.info("\n\t".join([entry.full_path(include_drive=True) for entry in entries]))
+                for file in entries:
                     path = file.full_path(include_drive=True)
                     self._mkfile(path, True, file)
                 self._meta = parser.get_metadata()
@@ -260,7 +290,10 @@ class SgaV2(AbstractFileSystem):
         return self._walk_from_node(root_node)
 
     def _unlazy(self):
-        with self._handle as reader:
+        if self._handle is None:
+            return
+
+        with ReadonlyMemMapFile(self._handle) as reader:
             for _, _, file_nodes in self._walk_from_path():
                 for file in file_nodes:
                     if file._lazy is None:
@@ -268,7 +301,8 @@ class SgaV2(AbstractFileSystem):
                     data = _read_omni(reader, file._lazy)
                     file._unlazy(data)
 
-        self._handle.close()
+        if hasattr(self._handle,"close"):
+            self._handle.close()
         self._handle = None
 
     @staticmethod
@@ -297,6 +331,7 @@ class SgaV2(AbstractFileSystem):
         return cur_dir, child
 
     def _mkdir(self, parts: Sequence[str], create_parents: bool = False) -> _Directory:
+        self._was_modified = True
         cur_dir = self._root
         if create_parents:
             for step in parts:
@@ -307,6 +342,7 @@ class SgaV2(AbstractFileSystem):
             if cur_dir is None or isinstance(cur_dir, _File):
                 raise NotImplementedError
             return cur_dir.mkdir(new_dir, exists_ok=True)
+
 
     def mkdir(self, path: str, create_parents: bool = False, **kwargs):
         parts = self._parts(path)
@@ -327,21 +363,26 @@ class SgaV2(AbstractFileSystem):
             child_step, None, None, path, entry, b"" if entry is not None else None
         )
         if child_step in parent_dir.files:
-            raise NotImplementedError
+            raise NotImplementedError(path, "exists")
+        self._was_modified = True
         parent_dir.files[child_step] = created
         return created
 
     def touch(self, path: str, **kwargs):
         steps = self._parts(path)
         cur_dir, file_name = self._resolve_node(steps)
+        if cur_dir is None:
+            raise FileNotFoundError(path)
         child = cur_dir.child(file_name)
         if child is None:
+            self._was_modified = True
             cur_dir.files[file_name] = _File(
-                file_name, None, None, path, None, b""
-            )  # TODO
+                file_name, datetime.datetime.now(), None, path, None, b""
+            )
         elif not isinstance(child, _File):
             raise NotImplementedError
         else:
+            self._was_modified = True
             child.modified = (
                 datetime.datetime.now()
             )  # todo; ensure it matches our logic for unix time
@@ -360,6 +401,7 @@ class SgaV2(AbstractFileSystem):
 
         """Return raw bytes-mode file-like from the file-system"""
         if is_writing:
+            self._was_modified = True
             parent, child_name = self._resolve_node(
                 self._parts(path), resolve_to_parent=True
             )
@@ -374,12 +416,12 @@ class SgaV2(AbstractFileSystem):
                     b"",
                     StorageType.STORE,
                 )
-            return _WriteFile(child, self._handle.safe_handle())
+            return _WriteFile(child, self._handle.read_handle())
         else:
             child, _ = self._resolve_node(self._parts(path), resolve_to_parent=False)
             if child is None:
                 raise FileNotFoundError(path)
-            return _ReadOnlyFile(child, self._handle.safe_handle())
+            return _ReadOnlyFile(child, self._handle.read_handle())
 
     def cp_file(self, path1, path2, **kwargs):
 
@@ -436,6 +478,8 @@ class SgaV2(AbstractFileSystem):
         if parent is None:
             # silently fail?
             return
+        if child in [*parent.sub_folders.keys(),*parent.files.keys()]:
+            self._was_modified = True
         parent.rm(child)
 
     def _iter_drives(self) -> Generator[_Directory, None, None]:
