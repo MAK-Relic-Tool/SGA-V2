@@ -38,7 +38,12 @@ _OmniHandleAccepts: TypeAlias = Union[
 
 
 class _OmniHandle:
-    def __init__(self, handle: _OmniHandleAccepts, close_handle: bool = False, writable: bool=False):
+    def __init__(
+        self,
+        handle: _OmniHandleAccepts,
+        close_handle: bool = False,
+        writable: bool = False,
+    ):
         self._path: str = None
         self._file_descriptor: int = None
         self._close_file_descriptor: bool = False
@@ -48,8 +53,8 @@ class _OmniHandle:
         self._mmap_handle: mmap.mmap = None  # always close mmap
         self._close_mmap = False
         self._allow_parallel_read: bool = False
-        self._writable: bool = writable # MAY be overriden depending on the handle type
-        self._allow_writable: bool = writable # whether we can make a write handle
+        self._writable: bool = writable  # MAY be overriden depending on the handle type
+        self._allow_writable: bool = writable  # whether we can make a write handle
         # We dont have an allow_parallel_write, because A) omnihandle is designed for reading and B) i don't think we can EVER parallel write to the same pyobject
 
         # This is fugly; but it works
@@ -67,17 +72,17 @@ class _OmniHandle:
             self._allow_writable = handle._allow_writable
         elif isinstance(handle, str):  # path
             self._path = handle
-            self._allow_writable = True # path is ALWAYS writable
+            self._allow_writable = True  # path is ALWAYS writable
         elif isinstance(handle, PathLike):
             self._path = handle.__fspath__()
-            self._allow_writable = True # path is ALWAYS writable
+            self._allow_writable = True  # path is ALWAYS writable
         elif isinstance(handle, int):  # fileno
             self._file_descriptor = handle
             self._close_file_descriptor = close_handle
             # we have to trust the passed in argument
         elif isinstance(handle, (bytearray, bytes)):  # raw
             self._raw = bytes(handle)  # ensure handle's internal data cant change
-            self._allow_writable = False # ABSOLUTELY NOT WRITABLE
+            self._allow_writable = False  # ABSOLUTELY NOT WRITABLE
         elif isinstance(handle, BinaryIO):  # python
             self._handle = handle  # assign handle so we can close
             self._close_handle = close_handle
@@ -104,20 +109,19 @@ class _OmniHandle:
             for v in [self._path, self._file_descriptor, self._mmap_handle, self._raw]
         )
 
-    def _make_handle(self, writable:bool):
+    def _make_handle(self, writable: bool):
         if self._path is not None:
-            return _OmniHandle(self._path,writable=writable)
+            return _OmniHandle(self._path, writable=writable)
         elif self._mmap_handle is not None:
-            return _OmniHandle(self._mmap_handle,writable=writable)
+            return _OmniHandle(self._mmap_handle, writable=writable)
         elif self._file_descriptor is not None:
-            return _OmniHandle(self._file_descriptor,writable=writable)
+            return _OmniHandle(self._file_descriptor, writable=writable)
         elif self._raw is not None:
-            return _OmniHandle(self._raw,writable=writable)
+            return _OmniHandle(self._raw, writable=writable)
         elif self._handle is not None:  # THE WORST CASE
             self._raw = self._handle.read()
-            return _OmniHandle(self._raw,writable=writable)
+            return _OmniHandle(self._raw, writable=writable)
         raise NotImplementedError
-
 
     def read_handle(self) -> "_OmniHandle":
         return self._make_handle(False)
@@ -143,7 +147,6 @@ class _OmniHandle:
                 print(self._path, e)
                 pass
             self._close_mmap = True
-
 
     def close(self):
         if self._close_file_descriptor and self._file_descriptor is not None:

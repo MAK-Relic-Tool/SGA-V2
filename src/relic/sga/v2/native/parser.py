@@ -20,7 +20,7 @@ from relic.sga.v2.native.models import (
     TocPointers,
     FileMetadata,
 )
-from relic.sga.v2.serialization import SgaV2GameFormat
+from relic.sga.v2.serialization import SgaV2GameFormat, RelicDateTimeSerializer
 
 TOC_PTR = struct.Struct("<IH")
 DRIVE_ENTRY = struct.Struct("<64s64s5H")
@@ -48,10 +48,10 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
 
     def __init__(
         self,
-        sga_path: str|PathLike[str]|BinaryIO,
+        sga_path: str | PathLike[str] | BinaryIO,
         logger: logging.Logger | None = None,
         read_metadata: bool = True,
-        prefer_drive_alias:bool=False
+        prefer_drive_alias: bool = False,
     ):
         """Parse SGA file.
 
@@ -59,10 +59,9 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
             sga_path: Path to SGA archive
             logger:
         """
-        super().__init__(sga_path) # dont create
+        super().__init__(sga_path)  # dont create
 
         self.logger = logger or logging.getLogger(__name__)
-        self.logger.setLevel(logging.DEBUG) # HACK; TODO remove
         self._files: list[dict[str, Any]] = []
         self._folders: list[dict[str, Any]] = []
         self._drives: list[dict[str, Any]] = []
@@ -109,17 +108,21 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
             # Also fix pointer to use absolute offset
             ptr.offset += self._TOC_OFFSET
 
-        def _log(name:str,_ptr:TocPointer):
-            self.logger.debug(BraceMessage("{name}: (offset={offset}, count={count}, size={size}B)",
-                              name=name,
-                                           offset=_ptr.offset,
-                                           size=_ptr.size,
-                                           count=_ptr.count))
+        def _log(name: str, _ptr: TocPointer):
+            self.logger.debug(
+                BraceMessage(
+                    "{name}: (offset={offset}, count={count}, size={size}B)",
+                    name=name,
+                    offset=_ptr.offset,
+                    size=_ptr.size,
+                    count=_ptr.count,
+                )
+            )
 
-        _log("Drives",drives)
-        _log("Folders",folders)
-        _log("Files",files)
-        _log("Names",names)
+        _log("Drives", drives)
+        _log("Folders", folders)
+        _log("Files", files)
+        _log("Names", names)
 
         # objects updated in place; no
         return TocPointers(drives, folders, files, names)
@@ -137,7 +140,14 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         running_index = 0
         for i, name in enumerate(string_table_data.split(b"\0")):
             safe_name = names[running_index] = name.decode("utf-8")
-            self.logger.debug(BraceMessage("Name[{i}] @{running_index} = {name}", i=i, running_index=running_index,name=safe_name))
+            self.logger.debug(
+                BraceMessage(
+                    "\tName[{i}] @{running_index} = '{name}'",
+                    i=i,
+                    running_index=running_index,
+                    name=safe_name,
+                )
+            )
             running_index += len(name) + 1
         return names
 
@@ -174,7 +184,9 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
                     "last_file": last_file,
                 }
             )
-            self.logger.debug(f"Drive: {name} (root_folder= {root_folder}, folders=[{first_folder}, {last_folder}], files=[{first_file}, files={last_file}])")
+            self.logger.debug(
+                f"Drive: {name} (root_folder= {root_folder}, folders=[{first_folder}, {last_folder}], files=[{first_file}, files={last_file}])"
+            )
         return drives
 
     def _parse_folders(
@@ -188,21 +200,27 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         base_offset = ptr.offset
         for folder_index in range(ptr.count):
             offset = base_offset + folder_index * FOLDER_ENTRY.size
-            self.logger.debug(f"Reading folder[{folder_index}] @{offset}")
-            buffer = self._read(
-                offset, FOLDER_ENTRY.size
-            )
+            # self.logger.debug(f"Reading folder[{folder_index}] @{offset}")
+            buffer = self._read(offset, FOLDER_ENTRY.size)
             # Folder: name_offset(4), subfolder_start(2), subfolder_stop(2), first_file(2), last_file(2)
             name_off, subfolder_start, subfolder_stop, first_file, last_file = (
                 FOLDER_ENTRY.unpack(buffer)
             )
-            self.logger.debug(f"Folder[{folder_index}]: (name_offset={name_off}, subfolder_start={subfolder_start}, subfolder_stop={subfolder_stop}, first_file={first_file}, last_file={last_file})")
+            self.logger.debug(
+                f"\tFolder[{folder_index}] @{offset}: (name_offset={name_off}, folders=[{subfolder_start}, {subfolder_stop}], files=[{first_file}, {last_file}])"
+            )
             if name_off not in string_table:
                 self.logger.error(
-                    BraceMessage("Cannot find name in name table @{name_off}",name_off=name_off)
+                    BraceMessage(
+                        "Cannot find name in name table @{name_off}", name_off=name_off
+                    )
                 )
-                DELTA = 256 * 2 # meta max size is 256, assume we must be in that range
-                _VIEW = {n:v for n,v in string_table.items() if name_off - DELTA <= n <= name_off + DELTA}
+                DELTA = 256 * 2  # meta max size is 256, assume we must be in that range
+                _VIEW = {
+                    n: v
+                    for n, v in string_table.items()
+                    if name_off - DELTA <= n <= name_off + DELTA
+                }
                 self.logger.error(string_table if len(_VIEW) == 0 else _VIEW)
 
             folder_name = string_table[name_off]
@@ -272,13 +290,16 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         base_offset = ptr.offset
         for file_index in range(ptr.count):
             offset = base_offset + file_index * s.size
-            self.logger.debug(f"Reading file[{file_index}] @{offset}")
+            # self.logger.debug(f"Reading file[{file_index}] @{offset}")
             buffer = self._read(offset, s.size)
             name_off, flags, data_offset, compressed_size, decompressed_size = s.unpack(
                 buffer
             )
             file_name = string_table[name_off]
             storage_type = parse_storage_type(flags)
+            self.logger.debug(
+                f"\tFile[{file_index}] @{offset} (name={file_name}, storage_type={storage_type}, offset={data_offset}, compressed={compressed_size}, decompressed={decompressed_size})"
+            )
 
             files.append(
                 {
@@ -318,16 +339,18 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         file_hash, _archive_name, toc_hash, toc_size, data_offset = (
             ARCHIVE_HEADER.unpack(buffer)
         )
-        archive_name: str = _archive_name.rstrip(b"\0").decode(
-            "utf-16", errors="ignore"
-        )
+        archive_name: str = _archive_name.decode("utf-16", errors="ignore").rstrip("\0")
 
-        self.logger.debug(BraceMessage("Header(file_hash={file_hash}, archive_name={archive_name}, toc_hash={toc_hash}, toc_size={toc_size}, data_offset={data_offset})",
-                                       file_hash=file_hash,
-                                       archive_name=archive_name,
-                                       toc_hash=toc_hash,
-                                       toc_size=toc_size,
-                                       data_offset=data_offset))
+        self.logger.debug(
+            BraceMessage(
+                "Header(file_hash={file_hash}, archive_name={archive_name}, toc_hash={toc_hash}, toc_size={toc_size}, data_offset={data_offset})",
+                file_hash=file_hash,
+                archive_name=archive_name,
+                toc_hash=toc_hash,
+                toc_size=toc_size,
+                data_offset=data_offset,
+            )
+        )
         self._data_block_start = data_offset
         self._meta = ArchiveMeta(
             file_hash,
@@ -350,7 +373,7 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
         #         file_pos(4), file_count(2), name_pos(4), name_count(2)
         toc_ptrs = self._parse_toc_header()
 
-        self._log(
+        self.logger.debug(
             f"TOC: {toc_ptrs.drive.count} drives, {toc_ptrs.folder.count} folders,"
             f" {toc_ptrs.file.count} files, {toc_ptrs.name.count} strings"
         )
@@ -396,7 +419,9 @@ class NativeParserV2(NativeParserHandler[FileEntryV2]):
             return
         folder = self._folders[folder_idx]
         folder_name = folder["name"]
-        self.logger.debug(f"Building Folder[{folder_idx}] (files=[{folder['first_file']}, {folder['last_file']}], folders=[{folder['subfolder_start']}, {folder['subfolder_stop']}])")
+        self.logger.debug(
+            f"Building Folder[{folder_idx}] (files=[{folder['first_file']}, {folder['last_file']}], folders=[{folder['subfolder_start']}, {folder['subfolder_stop']}])"
+        )
 
         # Normalize folder name (remove backslashes)
         folder_name = folder_name.replace("\\", "/")
@@ -454,5 +479,5 @@ def _read_metadata(reader: ReadonlyMemMapFile, entry: FileEntry) -> FileMetadata
     )
     _name, unix_timestamp, crc32_hash = FILE_METADATA.unpack(buffer)
     name = _name.rstrip(b"\0").decode("utf-8", errors="ignore")
-    modified = datetime.datetime.fromtimestamp(unix_timestamp, datetime.timezone.utc)
+    modified = RelicDateTimeSerializer.unix2datetime(unix_timestamp)
     return FileMetadata(name, modified, crc32_hash)

@@ -133,9 +133,9 @@ class _File(_Node):
         pass  # we dont store file handles here *_*
 
 
-def _read_omni(handle: _OmniHandle|ReadonlyMemMapFile, entry: FileEntryV2):
+def _read_omni(handle: _OmniHandle | ReadonlyMemMapFile, entry: FileEntryV2):
     if isinstance(handle, ReadonlyMemMapFile):
-        raw = handle._read(entry.data_offset,entry.compressed_size)
+        raw = handle._read(entry.data_offset, entry.compressed_size)
     else:
         raw = handle[entry.data_offset : entry.data_offset + entry.compressed_size]
     if entry.storage_type != StorageType.STORE:
@@ -226,9 +226,9 @@ class SgaV2(AbstractFileSystem):
 
     def __init__(
         self,
-        handle: str|PathLike[str]|BinaryIO| None = None,
+        handle: str | PathLike[str] | BinaryIO | None = None,
         parse: bool = True,
-        autosave:bool = True,
+        autosave: bool = True,
     ):
         super().__init__()
         self._handle = handle
@@ -245,26 +245,30 @@ class SgaV2(AbstractFileSystem):
         if self._autosave and self._was_modified:
             self.save(self._handle)
 
-    def save(self, handle: str|PathLike[str]|BinaryIO = None):
-        from relic.sga.v2.fsspec_.serializer import FsSpecWriter
+    def save(self, handle: str | PathLike[str] | BinaryIO = None):
+        from relic.sga.v2.fsspec_.writer import FsSpecWriter
+
         if handle is None:
             handle = self._handle
-            handle.seek(0)
+            if isinstance(handle, BinaryIO):
+                handle.seek(0)
 
         with FsSpecWriter(self) as writer:
             writer.write(handle, self._meta.name)
 
     def _parse(self):
         if self._should_parse:
-            with NativeParserV2(self._handle,prefer_drive_alias=True,read_metadata=True) as parser:
+            with NativeParserV2(
+                self._handle, prefer_drive_alias=True, read_metadata=True
+            ) as parser:
                 parser.parse()
 
-
                 for drive in parser._drives:
-                    self._root.sub_folders[drive["alias"]] = _Directory(drive["alias"],{},{},drive["alias"], drive_name=drive["name"])
+                    self._root.sub_folders[drive["alias"]] = _Directory(
+                        drive["alias"], {}, {}, drive["alias"], drive_name=drive["name"]
+                    )
                 entries = parser.get_file_entries()
-                logger.info(f"Parsed {len(entries)} entries")
-                logger.info("\n\t".join([entry.full_path(include_drive=True) for entry in entries]))
+                logger.debug(f"Parsed {len(entries)} entries")
                 for file in entries:
                     path = file.full_path(include_drive=True)
                     self._mkfile(path, True, file)
@@ -301,7 +305,7 @@ class SgaV2(AbstractFileSystem):
                     data = _read_omni(reader, file._lazy)
                     file._unlazy(data)
 
-        if hasattr(self._handle,"close"):
+        if hasattr(self._handle, "close"):
             self._handle.close()
         self._handle = None
 
@@ -342,7 +346,6 @@ class SgaV2(AbstractFileSystem):
             if cur_dir is None or isinstance(cur_dir, _File):
                 raise NotImplementedError
             return cur_dir.mkdir(new_dir, exists_ok=True)
-
 
     def mkdir(self, path: str, create_parents: bool = False, **kwargs):
         parts = self._parts(path)
@@ -478,7 +481,7 @@ class SgaV2(AbstractFileSystem):
         if parent is None:
             # silently fail?
             return
-        if child in [*parent.sub_folders.keys(),*parent.files.keys()]:
+        if child in [*parent.sub_folders.keys(), *parent.files.keys()]:
             self._was_modified = True
         parent.rm(child)
 

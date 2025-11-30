@@ -1,15 +1,20 @@
+import dataclasses
 import logging
-import math
+import multiprocessing
+import os
 import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Generator, Callable, Any
 
+from relic.sga.core.native.handler import SgaReader
+
 from relic.sga.v2.fsspec_.main import SgaV2 as SgaFsSpec
+from relic.sga.v2.native.parser import NativeParserV2
 from relic.sga.v2.pyfilesystem.definitions import EssenceFSV2 as SgaPyFs
 
 logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+logger.setLevel(logging.INFO)
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
 @contextmanager
@@ -174,13 +179,91 @@ def try_read_write_fsspec(sga:str):
     except Exception as e:
         logger.exception(e)
 
+def try_cmp_fsspec(sga:str):
+    def _diff(_e1,_e2):
+        def _flatten_nested(_d):
+            if not isinstance(_d, dict):
+                return _d
+            flatd = {}
+            for k, v in _d.items():
+                _tempf = _flatten_nested(v)
+                if isinstance(_tempf, dict):
+                    flatd.update(_tempf)
+                else:
+                    flatd[k] = _tempf
+            return flatd
+
+
+        _e1 = [_flatten_nested(dataclasses.asdict(_)) for _ in _e1]
+        _e2 = [_flatten_nested(dataclasses.asdict(_)) for _ in _e2]
+        keys = list(_e1[0].keys())
+        check_keys = set(keys)
+        check_keys.remove("data_offset") # allow data_off to be different
+        mismatch_keys = set()
+        for __e1, __e2 in zip(_e1, _e2):
+            safe_check_keys = set(check_keys)
+            for key in safe_check_keys:
+                if __e1[key] != __e2[key]:
+                    mismatch_keys.add(key)
+                    check_keys.remove(key)
+
+        def _build_filtered(_ex):
+            return [{k:v for k,v in _.items() if k in mismatch_keys} for _ in _ex]
+
+        return _build_filtered(_e1), _build_filtered(_e2)
+
+    size1 = os.stat(sga).st_size
+    with NativeParserV2(sga) as parser:
+        entries = parser.parse()
+        dataoff = parser._data_block_start
+    with SgaReader(sga) as reader:
+        blobs = reader.read_files_parallel(entries,multiprocessing.cpu_count())
+
+    with SgaFsSpec(sga) as specfs:
+        specfs.save()
+
+    size2 = os.stat(sga).st_size
+    with NativeParserV2(sga) as parser:
+        entries2 = parser.parse()
+        dataoff2 = parser._data_block_start
+    with SgaReader(sga) as reader:
+        blobs2 = reader.read_files_parallel(entries2, multiprocessing.cpu_count())
+
+    if size1 != size2:
+        logger.warning(f"\tSize changed after save! {size1} -> {size2}")
+
+    if len(entries) != len(entries2):
+        logger.error(f"\tentries do not match ({len(entries)} != {len(entries2)})")
+        return
+
+
+    exact_failed = False
+    diff1, diff2 = _diff(entries, entries2)
+    for i, (e1, e2) in enumerate(zip(diff1,diff2)):
+        if e1 != e2:
+            exact_failed = True
+            logger.warning(f"\tEXACT entries do not match!\n\t{e1}\n\t{e2}")
+            break
+
+    for i, (b1, b2) in enumerate(zip(blobs,blobs2)):
+        if b1.errors or b2.errors:
+          exact_failed = True
+          logger.warning(f"\tError reading blobs!\n\t{b1.input.data_offset}\t{b1.errors}\n\t{b2.input.data_offset}\t{b2.errors}")
+
+        elif b1.output != b2.output:
+            exact_failed = True
+            logger.warning(f"\tEXACT blobs do not match!\n\t{b1.output}\n\t{b2.output}")
+
+    if exact_failed:
+        logger.error(f"\tentries did not match after saving!")
+    else:
+        logger.info(f"\tentries match after save")
+
 
 if __name__ == "__main__":
-    _PATH = "./sample.sga"
-    with Path(_PATH).open("wb") as _f:
-        _b = Path(sys.argv[1]).read_bytes()
-        _f.write(_b)
-    try_read_write_fsspec(_PATH)
-    # compare_open(_PATH)
-    # compare_save_no_change(_PATH)
-    # compare_save_change(_PATH)
+    _PATH = "./source.sga"
+    for sga in Path(sys.argv[1]).glob("**/*.sga"):
+        logger.info(f"Processing {sga}")
+        with Path(_PATH).open("wb") as _f:
+            _f.write(sga.read_bytes())
+        try_cmp_fsspec(_PATH)
