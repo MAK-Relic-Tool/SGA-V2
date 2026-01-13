@@ -1,24 +1,33 @@
+import concurrent.futures
 import json
 import logging
+import multiprocessing
 import os
 from argparse import ArgumentParser, Namespace
+from concurrent.futures import Future
+from concurrent.futures.thread import ThreadPoolExecutor
 from os.path import splitext
-from pathlib import Path
-from typing import Optional, Dict, Any
+from pathlib import Path, PurePath
+from typing import Optional, Dict, Any, List
 
 from relic.core.cli import CliPlugin, _SubParsersAction, RelicArgParser, CliPluginGroup
 from relic.core.errors import RelicToolError
+from relic.core.logmsg import BraceMessage
 from relic.sga.core.cli import _get_file_type_validator
+from relic.sga.core.native.definitions import Result
 
 from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
 from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
+from relic.sga.v2.native import (
+    SgaVerifierV2,
+    walk_entries_as_tree,
+    FileEntryV2,
+    ArchiveMeta,
+    _T,
+)
+from relic.sga.v2.native.parser import NativeParserV2
 from relic.sga.v2.serialization import SgaV2GameFormat
-from relic.core.logmsg import BraceMessage
-
-from relic.sga.v2.essencefs.definitions import SgaPathResolver
-
-from fs.info import Info
 
 _CHUNK_SIZE = 1024 * 1024 * 4  # 4 MiB
 
@@ -247,6 +256,33 @@ class RelicSgaVerifyV2Cli(CliPlugin):
         )
         return parser
 
+    @staticmethod
+    def _verify_header(sga: str, meta: ArchiveMeta) -> Result[None, bool]:
+        with SgaVerifierV2(sga) as verifier:
+            try:
+                valid = verifier.verify_toc(meta)
+                return Result(None, valid)
+            except RelicToolError as e:
+                return Result(None, False, [e])
+
+    @staticmethod
+    def _verify_data(sga: str, meta: ArchiveMeta) -> Result[None, bool]:
+        with SgaVerifierV2(sga) as verifier:
+            try:
+                valid = verifier.verify_archive(meta)
+                return Result(None, valid)
+            except RelicToolError as e:
+                return Result(None, False, [e])
+
+    @staticmethod
+    def _verify_file(sga: str, entry: FileEntryV2) -> Result[FileEntryV2, bool]:
+        with SgaVerifierV2(sga) as verifier:
+            try:
+                valid = verifier.verify_file(entry, entry.metadata)
+                return Result(entry, valid)
+            except Exception as e:
+                return Result(entry, False, [e])
+
     def command(self, ns: Namespace, *, logger: logging.Logger) -> Optional[int]:
         # Extract Args
         sga: str = ns.sga_file
@@ -265,8 +301,8 @@ class RelicSgaVerifyV2Cli(CliPlugin):
                 )
             verify_files = verify_header = verify_data = True
         elif not any([verify_data, verify_header, verify_files]):
-            if quiet_mode:
-                logger.info("No verification flags specified, assuming '--all' flag")
+            if not quiet_mode:
+                logger.debug("No verification flags specified, assuming '--all' flag")
             verify_files = verify_header = verify_data = True
 
         def get_valid_msg(v: Optional[bool]) -> str:
@@ -276,77 +312,128 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             logger.info("\tVerification Failed!")
             return 1
 
-        with open(sga, "rb") as sga_h:
-            sgafs = EssenceFSV2(
-                sga_h,
-                parse_handle=True,
-                in_memory=False,
+        with NativeParserV2(sga, logger=logger, read_metadata=True) as parser:
+            files = parser.parse()
+            meta = parser.get_metadata()
+
+        # I know this looks weird BUT
+        # for most sga files; verify_data will be the chokepoint
+        # This allows verify_header and verify_files to run on separate threads while verify_data chokes
+        with ThreadPoolExecutor(
+            max_workers=multiprocessing.cpu_count() - 1
+        ) as executor:
+            verify_header_future, verify_data_future, verify_file_futures = (
+                None,
+                None,
+                None,
             )
             if verify_header:
-                try:
-                    header_valid = sgafs.verify_sga_header(True)
-                except RelicToolError as e:
+                verify_header_future = executor.submit(self._verify_header, sga, meta)
+            if verify_data:
+                verify_data_future = executor.submit(self._verify_data, sga, meta)
+            if verify_files:
+                verify_file_futures = [
+                    executor.submit(self._verify_file, sga, entry) for entry in files
+                ]
+
+            def _wait_all(fs: list[Future[_T]]) -> list[_T]:
+                return [_.result() for _ in concurrent.futures.as_completed(fs)]
+
+            def _wait(f: Future[_T]) -> _T:
+                return _wait_all([f])[0]
+
+            def _handle_metadata_future(f: Future[Result[None, bool]], name: str):
+                result = _wait(f)
+                header_valid = result.output
+                if result.errors:
                     header_valid = False
-                    logger.error(e)
+                    for e in result.errors:
+                        logger.error(e)
 
                 if not quiet_mode or not header_valid:
                     logger.info(
-                        BraceMessage("SGA Header: {0}", get_valid_msg(header_valid))
+                        BraceMessage("{0}: {1}", name, get_valid_msg(header_valid))
                     )
-                if fail_on_error and not header_valid:
-                    return error_failure()
+                return header_valid
 
-            if verify_data:
-                try:
-                    data_valid = sgafs.verify_sga_file(True)
-                except RelicToolError as e:
-                    data_valid = False
-                    logger.error(e)
-                if not quiet_mode or not data_valid:
-                    logger.info(
-                        BraceMessage("SGA Data: {0}", get_valid_msg(data_valid))
-                    )
-                if fail_on_error and not data_valid:
-                    return error_failure()
+            def _handle_files_futures(fs: List[Future[Result[FileEntryV2, bool]]]):
+                valid_file_results = _wait_all(fs)
+                if not quiet_mode:
+                    logger.info("SGA Files:")
+                _INCLUDE_DRIVE = True
+                if print_files_as_tree:
 
-            if verify_files:
-                prev_level = 0
-                for step in sgafs.walk("/"):
-                    nest_level = 0  # only usedf if print_files_as_tree is used
-                    if print_files_as_tree:
-                        parts = SgaPathResolver.split_parts(step.path)
-                        nest_level = max(0, len(parts) - 1)
+                    def _key_func(r: Result[FileEntryV2, bool]) -> FileEntryV2:
+                        return r.input
+
+                    for folder, results in walk_entries_as_tree(
+                        valid_file_results,
+                        include_drive=_INCLUDE_DRIVE,
+                        key_func=_key_func,
+                    ):
+                        parts = PurePath(folder).parts
+                        nest_level = (
+                            len(parts) - 1
+                        )  # -1 because parts will always have at least one element
                         logger.info(
                             BraceMessage("{0}`- {1}", " " * nest_level, parts[-1])
                         )
-                    # print(prev_level, level)
-                    file: Info
-                    for file in step.files:
-                        name = file.name
-                        path = SgaPathResolver.join(step.path, name)
-                        try:
-                            file_valid = sgafs.verify_file_crc(path, True)
-                        except RelicToolError as e:
-                            file_valid = False
-                            logger.error(e)
-                        if not quiet_mode or not file_valid:
-                            if print_files_as_tree:
+                        for result in results:
+                            name = result.input.name
+                            for error in result.errors:
+                                logger.error(error)
+
+                            if not quiet_mode or not result.output:
                                 logger.info(
                                     BraceMessage(
                                         "{0}`- {1}: {2}",
                                         " " * (nest_level + 1),
                                         name,
-                                        get_valid_msg(file_valid),
+                                        get_valid_msg(result.output),
                                     )
                                 )
-                            else:
-                                logger.info(
-                                    BraceMessage(
-                                        "{0}: {1}", path, get_valid_msg(file_valid)
-                                    )
+                            if fail_on_error and not result.output:
+                                return False
+                                # return error_failure()
+                else:
+                    for result in valid_file_results:
+                        if not quiet_mode or not result.output:
+                            logger.info(
+                                BraceMessage(
+                                    "\t{0}: {1}",
+                                    result.input.full_path(_INCLUDE_DRIVE),
+                                    get_valid_msg(result.output),
                                 )
-                        if fail_on_error and not file_valid:
-                            return error_failure()
+                            )
+                        if fail_on_error and not result.output:
+                            return False
+                return True
 
-            logger.info("\tVerification Passed!")
-        return 0
+            # Despite PROCESSING in parallel
+            # It looks nicer if we print consistently
+            # Header -> Data -> Files
+            valid_header = valid_data = valid_files = True
+            if verify_header:
+                valid_header = _handle_metadata_future(
+                    verify_header_future, "SGA Header"
+                )
+                if fail_on_error and not valid_header:
+                    return error_failure()
+
+            if verify_data:
+                valid_data = _handle_metadata_future(verify_data_future, "SGA Data")
+                if fail_on_error and not valid_data:
+                    return error_failure()
+
+            if verify_files:
+                valid_files = _handle_files_futures(verify_file_futures)
+                if fail_on_error and not valid_files:
+                    return error_failure()
+
+            failures = sum(
+                0 if cond else 1 for cond in [valid_files, valid_header, valid_data]
+            )
+
+            logger.info("Verification Complete!")
+            logger.info("\t%d Checks Failed", failures)
+        return failures

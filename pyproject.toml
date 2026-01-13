@@ -19,6 +19,11 @@ dynamic = ["version"]
 name = "relic-tool-sga-v2"
 requires-python = ">=3.9"
 
+[project.optional-dependencies]
+pyfilesystem2 = ["pyfilesystem2"] # depricate pyfilesystem by making it an optional dependency
+fsspec = ["fsspec"]
+
+
 [project.entry-points."fs.opener"]
 sga-dow = "relic.sga.v2.opener:EssenceFSV2Opener"
 sga-ic = "relic.sga.v2.opener:EssenceFSV2Opener"
@@ -31,6 +36,9 @@ v2 = "relic.sga.v2.cli:RelicSgaV2Cli"
 pack = "relic.sga.v2.cli:RelicSgaPackV2Cli"
 verify = "relic.sga.v2.cli:RelicSgaVerifyV2Cli"
 repack = "relic.sga.v2.cli:RelicSgaRepackV2Cli"
+
+[project.entry-points."relic.sga.parser"]
+"v2.0" = "relic.sga.v2.native:NativeParserV2"
 
 [project.entry-points."relic.sga.opener"]
 "v2.0" = "relic.sga.v2.essencefs:EssenceFSV2Opener"
