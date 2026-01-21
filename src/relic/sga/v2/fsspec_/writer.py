@@ -74,7 +74,7 @@ class FsSpecWriter(_SgaWriter[SgaFsSpec]):
         game_format: SgaV2GameFormat,
         writeback_ptr: int | None = None,
         folder_index: int | None = None,
-    ):
+    ) -> None:
         full_path = self._get_full_path(drive, folder)
         name_offset = self._add_name(drive.name, full_path)
 
@@ -118,7 +118,7 @@ class FsSpecWriter(_SgaWriter[SgaFsSpec]):
                 increment_count=False,
             )
 
-    def _add_fs_drive(self, drive: _Directory, game_format: SgaV2GameFormat):
+    def _add_fs_drive(self, drive: _Directory, game_format: SgaV2GameFormat) -> None:
         self._logger.debug(
             f"Adding FS Drive (alias={drive.name}, name={drive.drive_name})"
         )
@@ -165,7 +165,7 @@ class FsSpecWriter(_SgaWriter[SgaFsSpec]):
             drive_folder_root,
         )
 
-    def _add_toc(self, game_format: SgaV2GameFormat):
+    def _add_toc(self, game_format: SgaV2GameFormat) -> None:
         self._logger.debug("Determining DoW/IC")
         game_format = self._resolve_desired_format(game_format, self._sga._meta)
 

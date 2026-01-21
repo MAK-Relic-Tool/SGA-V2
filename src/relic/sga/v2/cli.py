@@ -8,7 +8,7 @@ from concurrent.futures import Future
 from concurrent.futures.thread import ThreadPoolExecutor
 from os.path import splitext
 from pathlib import Path, PurePath
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, TypeVar
 
 from relic.core.cli import CliPlugin, _SubParsersAction, RelicArgParser, CliPluginGroup
 from relic.core.errors import RelicToolError
@@ -18,14 +18,10 @@ from relic.sga.core.native.definitions import Result
 
 from relic.sga.v2 import arciv
 from relic.sga.v2.arciv import Arciv
-from relic.sga.v2.essencefs.definitions import SgaFsV2Packer, EssenceFSV2
-from relic.sga.v2.native import (
-    SgaVerifierV2,
-    walk_entries_as_tree,
-    FileEntryV2,
-    ArchiveMeta,
-    _T,
-)
+from relic.sga.v2.native._util import SgaVerifierV2, walk_entries_as_tree
+from relic.sga.v2.native.models import ArchiveMeta, FileEntryV2
+from relic.sga.v2.pyfilesystem.definitions import SgaFsV2Packer, EssenceFSV2
+
 from relic.sga.v2.native.parser import NativeParserV2
 from relic.sga.v2.serialization import SgaV2GameFormat
 
@@ -211,6 +207,9 @@ class RelicSgaRepackV2Cli(CliPlugin):
         return 0
 
 
+_T = TypeVar("_T")
+
+
 class RelicSgaVerifyV2Cli(CliPlugin):
     def _create_parser(
         self, command_group: Optional[_SubParsersAction] = None
@@ -342,7 +341,9 @@ class RelicSgaVerifyV2Cli(CliPlugin):
             def _wait(f: Future[_T]) -> _T:
                 return _wait_all([f])[0]
 
-            def _handle_metadata_future(f: Future[Result[None, bool]], name: str):
+            def _handle_metadata_future(
+                f: Future[Result[None, bool]], name: str
+            ) -> bool | None:
                 result = _wait(f)
                 header_valid = result.output
                 if result.errors:
@@ -356,7 +357,9 @@ class RelicSgaVerifyV2Cli(CliPlugin):
                     )
                 return header_valid
 
-            def _handle_files_futures(fs: List[Future[Result[FileEntryV2, bool]]]):
+            def _handle_files_futures(
+                fs: List[Future[Result[FileEntryV2, bool]]],
+            ) -> bool:
                 valid_file_results = _wait_all(fs)
                 if not quiet_mode:
                     logger.info("SGA Files:")

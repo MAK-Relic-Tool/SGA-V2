@@ -89,7 +89,7 @@ def t_error(t: LexToken) -> None:
     """
     _add_linepos(t)
     raise LexError(
-        f"Scanning error. Illegal character '{t.value[0]}' found at L{t.lineno}:{getattr(t,"linepos",t.lexpos)}",
+        f"Scanning error. Illegal character '{t.value[0]}' found at L{t.lineno}:{getattr(t,'linepos',t.lexpos)}",
         t.value[0],
     )
 

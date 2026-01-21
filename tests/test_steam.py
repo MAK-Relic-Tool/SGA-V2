@@ -14,7 +14,7 @@ from relic.core import CLI
 from relic.core.lazyio import read_chunks
 
 from relic.sga.v2.serialization import SgaV2GameFormat
-from relic.sga.v2.essencefs.definitions import EssenceFSV2
+from relic.sga.v2.pyfilesystem.definitions import EssenceFSV2
 
 _DOW_DC = "Dawn of War Dark Crusade"
 _DOW_GOLD = "Dawn of War Gold"
