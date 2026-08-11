@@ -2217,10 +2217,12 @@ class EssenceFSV2(EssenceFS):  # pylint: disable=r0902
             handle_mode = _mode.to_platform_bin()
             if _mode.text:
                 logger.warning(
-                    "Opening `{0!r}` with mode `{1}` (text) is not supported, opening as `{2}` (binary)",
-                    path,
-                    mode,
-                    handle_mode,
+                    BraceMessage(
+                        "Opening `{0!r}` with mode `{1}` (text) is not supported, opening as `{2}` (binary)",
+                        path,
+                        mode,
+                        handle_mode,
+                    )
                 )
 
             handle: IO[bytes]

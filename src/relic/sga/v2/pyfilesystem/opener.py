@@ -6,7 +6,7 @@ from relic.sga.core.definitions import Version
 from relic.sga.core.essencefs.opener import EssenceFsOpenerPlugin
 
 from relic.sga.v2.definitions import version
-from relic.sga.v2.essencefs.definitions import EssenceFSV2
+from relic.sga.v2.pyfilesystem.definitions import EssenceFSV2
 from relic.sga.v2.serialization import SgaV2GameFormat
 
 
