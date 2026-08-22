@@ -32,6 +32,9 @@ pack = "relic.sga.v2.cli:RelicSgaPackV2Cli"
 verify = "relic.sga.v2.cli:RelicSgaVerifyV2Cli"
 repack = "relic.sga.v2.cli:RelicSgaRepackV2Cli"
 
+[project.entry-points."relic.sga.parser"]
+"v2.0" = "relic.sga.v2.native:NativeParserV2"
+
 [project.entry-points."relic.sga.opener"]
 "v2.0" = "relic.sga.v2.essencefs:EssenceFSV2Opener"
 

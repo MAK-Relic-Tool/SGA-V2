@@ -26,3 +26,5 @@ docs/build/**
 docs/source/generated/**
 src/relic/sga/v2/arciv/parser.out
 src/relic/sga/v2/arciv/parsetab.py
+/tests/profiling/prof
+/prof
